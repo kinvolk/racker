@@ -1,0 +1,54 @@
+networkd:
+  units:
+    - name: zz-default.network
+      dropins:
+        - name: 10-priv-stable.conf
+          contents: |
+            [Match]
+            MACAddress={{MAC}}
+            # [Address]
+            # Address=... # in case of static addressing on the interface
+            [Network]
+            # DHCP=no # in case of static
+            IPVLAN=priv-stable
+    - name: 10-priv-stable.netdev
+      contents: |
+        [NetDev]
+        Description=Secondardy IP address for the default interface
+        Name=priv-stable
+        Kind=ipvlan
+        [IPVLAN]
+        Mode=L2
+        Flags=bridge
+    - name: 10-priv-stable.network
+      contents: |
+        [Match]
+        Name=priv-stable
+        [Link]
+        RequiredForOnline=no
+        [Network]
+        LinkLocalAddressing=no
+        [Address]
+        Address={{IP_ADDRESS}}/24
+        Scope=link
+storage:
+  filesystems:
+    - name: oem
+      mount:
+        device: /dev/disk/by-label/OEM
+        format: ext4
+        label: OEM
+  files:
+    - path: /grub.cfg
+      filesystem: oem
+      mode: 0644
+      contents:
+        inline: |
+          set linux_append="flatcar.autologin ip={{IP_ADDRESS}}:::255.255.255.0::e*:none"
+    - path: /etc/hosts
+      filesystem: root
+      mode: 0644
+      contents:
+        inline: |
+          # Requires systemd-resolved for returning all addresses to gain HA for the api server
+{{HOSTS}}
