@@ -1,0 +1,13 @@
+FROM alpine:3.12.0 as racker-build
+
+ARG RACKER_TARBALL=racker.tar.gz
+ENV RACKER_TARBALL=$RACKER_TARBALL
+
+ENV RACKER_DIR=/racker
+
+RUN mkdir -p $RACKER_DIR/
+COPY --chown=1000:1000 $RACKER_TARBALL $RACKER_DIR/
+
+ADD --chown=1000:1000 ./extract.sh $RACKER_DIR/
+
+CMD $RACKER_DIR/extract.sh
