@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# This script will be split appard, everything guarded with USE_QEMU is a dev helper while the rest goes on the mgmt node (possibly in a Docker image)
+# This script will be split appart, everything guarded with USE_QEMU is a dev helper while the rest goes on the mgmt node (possibly in a Docker image)
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
@@ -23,21 +23,25 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
+if [ "$(lokoctl version)" != "v0.5.0-334-g6a9e638c" ]; then
+  echo "Correct lokoctl version not found in PATH, compile from the branch imran/baremetal-feature-parity"
+  exit 1
+fi
 
 ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
 
 CONTROLLER_AMOUNT=1
+SUBNET_PREFIX="172.24.213"
 if [ -n "$USE_QEMU" ]; then
   VM_MEMORY=2500
   VM_DISK=10
-  # Assign a wide subnet so that it overlaps with the actual subnet used internally, allowing to reach it from the host (later the range should be the same but split between static and dynamic to avoid conflicts)
   INTERNAL_BRIDGE_NAME="pxe0"
-  INTERNAL_BRIDGE_ADDRESS="172.16.0.1"
-  INTERNAL_BRIDGE_SIZE="12"
-  INTERNAL_BRIDGE_BROADCAST="172.31.255.255"
-  INTERNAL_DHCP_RANGE_LOW="172.16.0.2"
-  INTERNAL_DHCP_RANGE_HIGH="172.31.255.254"
-  INTERNAL_DHCP_NETMASK="255.240.0.0"
+  INTERNAL_BRIDGE_ADDRESS="${SUBNET_PREFIX}.1" # the bridge IP address will also be used for the management node containers, later when run in a VM, .0 should be used or no address since the external bridge can also be used to reach the nodes
+  INTERNAL_BRIDGE_SIZE="24"
+  INTERNAL_BRIDGE_BROADCAST="${SUBNET_PREFIX}.255"
+  INTERNAL_DHCP_RANGE_LOW="${SUBNET_PREFIX}.128" # use the second half for DHCP, the first for static addressing
+  INTERNAL_DHCP_RANGE_HIGH="${SUBNET_PREFIX}.254"
+  INTERNAL_DHCP_NETMASK="255.255.255.0"
   # Set up Internet connectivity for the non-PXE interface of each VM
   EXTERNAL_BRIDGE_NAME="ext0"
   EXTERNAL_BRIDGE_ADDRESS="192.168.254.1"
@@ -55,7 +59,7 @@ NUM_NODES=${#MAC_ADDRESS_LIST[*]}
 
 function get_matchbox_interface() {
   if [ -n "$USE_QEMU" ]; then
-    echo "matchbox"
+    echo "pxe0"
   else
     exit 1 # TODO: find eth interface to use for mgmt node
   fi
@@ -74,25 +78,14 @@ function get_client_cert_dir() {
   echo "$p"
 }
 
-# idea: pick a stable /24 subnet, based on the MAC addr of the mgmt node MAC addr, part of 172.16.0.0/12 and assign the node number to the last byte
-# This private subnet could also be on an internal L2 network, in which case we can encode this in dnsmasq based on node MAC addr (and can hardcode one subnet regardless of the mgmt MAC addr)
+# Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte
+# Purpose is DHCP/PXE but also stable addressing of the nodes (TODO: the internal DHCP server using this should start at .128 and we return an error here for >=128)
 function calc_ip_addr() {
-  local node_nr="$1" # .1 is assumed to be the management node
-  local mac=""
-  local hex=""
-  local i=""
-  mac="$(cat /sys/class/net/"$(get_matchbox_interface)"/address)"
-  # keep ":" separators and newline for simplicity
-  hex="$(echo "$mac" | md5sum | { echo -n ac1; head -c 3 ; echo; })"
-  # take first 3 hex digits of md5sum (12 bit), prefix is 12 bit 0xac1, ergo /24
-  # 0xac1000__ to 0xac1fff__ means 172.16.x._ to 172.31.255._
-  # display in 1.2.3.4 format
-  for i in $(seq 0 2 4); do
-    echo -n "$((16#${hex:i:2}))"
-    echo -n "."
-  done
-  # append last byte in decimal
-  echo "$node_nr"
+  local node_nr="$1"
+  if [ "${node_nr}" -ge 128 ]; then
+    exit 1
+  fi
+  echo "${SUBNET_PREFIX}.${node_nr}"
 }
 
 function get_matchbox_ip_addr() {
@@ -101,9 +94,6 @@ function get_matchbox_ip_addr() {
 
 function destroy_network() {
   if [ -n "$USE_QEMU" ]; then
-    echo "Destroying private ipvlan interface $(get_matchbox_interface)"
-    sudo ip link delete "$(get_matchbox_interface)" type ipvlan || true
-
     echo "Destroying internal network bridge ${INTERNAL_BRIDGE_NAME}"
     sudo ip link delete "${INTERNAL_BRIDGE_NAME}" type bridge || true
 
@@ -125,13 +115,8 @@ function create_network() {
 
     sudo ip link add name "${INTERNAL_BRIDGE_NAME}" address aa:bb:cc:dd:ee:ff type bridge
     sudo ip link set "${INTERNAL_BRIDGE_NAME}" up
-    # Use a stable MAC address because it's the same that the matchbox interface gets, and we want to calculate a subnet from it # TODO: later create a VM with that MAC
+    # Use a stable MAC address because it's also the matchbox interface, and we want to calculate a cluster name from it # TODO: later create a VM with that MAC
     sudo ip addr add dev "${INTERNAL_BRIDGE_NAME}" "${INTERNAL_BRIDGE_ADDRESS}/${INTERNAL_BRIDGE_SIZE}" broadcast "${INTERNAL_BRIDGE_BROADCAST}"
-
-    echo "Creating private ipvlan interface $(get_matchbox_interface)"
-    sudo ip link add name "$(get_matchbox_interface)" link "${INTERNAL_BRIDGE_NAME}" type ipvlan mode l2
-    sudo ip link set "$(get_matchbox_interface)" up
-    sudo ip addr add dev "$(get_matchbox_interface)" "$(get_matchbox_ip_addr)/24"
 
     # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway)
     sudo iptables -P FORWARD ACCEPT
@@ -405,8 +390,7 @@ if [ "$1" = create ]; then
   gen_cluster_vars
 
   RET=0
-  # TODO: currently requires imran/baremetal-feature-parity
-  "${HOME}"/kinvolk/lokomotive/lokoctl cluster apply --verbose --skip-components || RET=$?
+  lokoctl cluster apply --verbose --skip-components || RET=$?
 
   if [ "$RET" = 0 ]; then
     PXERET=0
@@ -418,7 +402,7 @@ if [ "$1" = create ]; then
     }
     if [ "$PXERET" = 0 ]; then
       echo "Bring-up worked"
-      "${HOME}"/kinvolk/lokomotive/lokoctl component apply
+      lokoctl component apply
       echo "Now you can directly change the baremetal.lokocfg config and run: lokoctl cluster|component apply, this script here is not needed anymore (TODO: only once the terraform workaround is in place)"
     fi
   else
