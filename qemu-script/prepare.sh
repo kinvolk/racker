@@ -23,8 +23,8 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
-if [ "$(lokoctl version)" != "v0.5.0-334-g6a9e638c" ]; then
-  echo "Correct lokoctl version not found in PATH, compile from the branch imran/baremetal-feature-parity"
+if [ "$(lokoctl version)" != "v0.5.0-335-g874975e9" ]; then
+  echo "Correct lokoctl version not found in PATH, compile it from the branch kai/baremetal"
   exit 1
 fi
 

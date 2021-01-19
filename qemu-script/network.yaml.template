@@ -13,19 +13,7 @@ networkd:
         DHCP=no
         LinkLocalAddressing=no
 storage:
-  filesystems:
-    - name: oem
-      mount:
-        device: /dev/disk/by-label/OEM
-        format: ext4
-        label: OEM
   files:
-    - path: /grub.cfg
-      filesystem: oem
-      mode: 0644
-      contents:
-        inline: |
-          set linux_append="flatcar.autologin"
     - path: /etc/hosts
       filesystem: root
       mode: 0644
