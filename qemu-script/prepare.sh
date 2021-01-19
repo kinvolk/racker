@@ -10,27 +10,43 @@ fi
 
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo "Usage: USE_QEMU=1 $0 create|destroy" # TODO: add something like create-image to embed an Ignition config into a Flatcar image for the mgmt node?
+  echo "TODO: Make sure you disable any firewall, e.g., run sudo systemctl disable --now firewalld"
   exit 1
 fi
 # TODO: setup trap?
+
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+cd "$SCRIPTFOLDER"
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "Please do not run as root, sudo will be used where necessary"
   exit 1
 fi
 
+
+ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+
 CONTROLLER_AMOUNT=1
 if [ -n "$USE_QEMU" ]; then
   VM_MEMORY=2500
   VM_DISK=10
-  BRIDGE_NAME="pxe0"
-  BRIDGE_ADDRESS="172.16.0.1" # TODO: use something smaller, for testing this is overlapping with the private IP address range until the "kernel_args" variable is exposed in Lokomotive to set up the private IP addr
-  BRIDGE_SIZE="12"
-  BRIDGE_BROADCAST="172.31.255.255"
-  DHCP_RANGE_LOW="172.16.0.2"
-  DHCP_RANGE_HIGH="172.31.255.254"
-  DHCP_NETMASK="255.240.0.0"
-  DHCP_ROUTER_OPTION="${BRIDGE_ADDRESS}"
+  # Assign a wide subnet so that it overlaps with the actual subnet used internally, allowing to reach it from the host (later the range should be the same but split between static and dynamic to avoid conflicts)
+  INTERNAL_BRIDGE_NAME="pxe0"
+  INTERNAL_BRIDGE_ADDRESS="172.16.0.1"
+  INTERNAL_BRIDGE_SIZE="12"
+  INTERNAL_BRIDGE_BROADCAST="172.31.255.255"
+  INTERNAL_DHCP_RANGE_LOW="172.16.0.2"
+  INTERNAL_DHCP_RANGE_HIGH="172.31.255.254"
+  INTERNAL_DHCP_NETMASK="255.240.0.0"
+  # Set up Internet connectivity for the non-PXE interface of each VM
+  EXTERNAL_BRIDGE_NAME="ext0"
+  EXTERNAL_BRIDGE_ADDRESS="192.168.254.1"
+  EXTERNAL_BRIDGE_SIZE="24"
+  EXTERNAL_BRIDGE_BROADCAST="192.168.254.255"
+  EXTERNAL_DHCP_RANGE_LOW="192.168.254.2"
+  EXTERNAL_DHCP_RANGE_HIGH="192.168.254.254"
+  EXTERNAL_DHCP_NETMASK="255.255.255.0"
+  EXTERNAL_DHCP_ROUTER_OPTION="${EXTERNAL_BRIDGE_ADDRESS}"
 fi
 
 # TODO: generate these two files ("ordered", e.g., sorting alphabetically?), ARP ping or ssh into ToR switch (and exclude mgmt node itself), also get BMC MAC addrs
@@ -88,27 +104,36 @@ function destroy_network() {
     echo "Destroying private ipvlan interface $(get_matchbox_interface)"
     sudo ip link delete "$(get_matchbox_interface)" type ipvlan || true
 
-    echo "Destroying network bridge ${BRIDGE_NAME}"
-    sudo ip link delete "${BRIDGE_NAME}" type bridge || true
+    echo "Destroying internal network bridge ${INTERNAL_BRIDGE_NAME}"
+    sudo ip link delete "${INTERNAL_BRIDGE_NAME}" type bridge || true
+
+    echo "Destroying external network bridge ${EXTERNAL_BRIDGE_NAME}"
+    sudo ip link delete "${EXTERNAL_BRIDGE_NAME}" type bridge || true
   fi
 }
 
 function create_network() {
   destroy_network
   if [ -n "$USE_QEMU" ]; then
-    echo "Creating bridge ${BRIDGE_NAME}"
+    echo "Creating bridge ${EXTERNAL_BRIDGE_NAME}"
 
-    sudo ip link add name "${BRIDGE_NAME}" address aa:bb:cc:dd:ee:ff type bridge
-    sudo ip link set "${BRIDGE_NAME}" up
+    sudo ip link add name "${EXTERNAL_BRIDGE_NAME}" type bridge
+    sudo ip link set "${EXTERNAL_BRIDGE_NAME}" up
+    sudo ip addr add dev "${EXTERNAL_BRIDGE_NAME}" "${EXTERNAL_BRIDGE_ADDRESS}/${EXTERNAL_BRIDGE_SIZE}" broadcast "${EXTERNAL_BRIDGE_BROADCAST}"
+
+    echo "Creating bridge ${INTERNAL_BRIDGE_NAME}"
+
+    sudo ip link add name "${INTERNAL_BRIDGE_NAME}" address aa:bb:cc:dd:ee:ff type bridge
+    sudo ip link set "${INTERNAL_BRIDGE_NAME}" up
     # Use a stable MAC address because it's the same that the matchbox interface gets, and we want to calculate a subnet from it # TODO: later create a VM with that MAC
-    sudo ip addr add dev "${BRIDGE_NAME}" "${BRIDGE_ADDRESS}/${BRIDGE_SIZE}" broadcast "${BRIDGE_BROADCAST}"
+    sudo ip addr add dev "${INTERNAL_BRIDGE_NAME}" "${INTERNAL_BRIDGE_ADDRESS}/${INTERNAL_BRIDGE_SIZE}" broadcast "${INTERNAL_BRIDGE_BROADCAST}"
 
     echo "Creating private ipvlan interface $(get_matchbox_interface)"
-    sudo ip link add name "$(get_matchbox_interface)" link "${BRIDGE_NAME}" type ipvlan mode l2
+    sudo ip link add name "$(get_matchbox_interface)" link "${INTERNAL_BRIDGE_NAME}" type ipvlan mode l2
     sudo ip link set "$(get_matchbox_interface)" up
     sudo ip addr add dev "$(get_matchbox_interface)" "$(get_matchbox_ip_addr)/24"
 
-    # Setup NAT Internet access for the bridge
+    # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway)
     sudo iptables -P FORWARD ACCEPT
     sudo iptables -t nat -A POSTROUTING -o $(ip route get 1 | grep -o -P ' dev .*? ' | cut -d ' ' -f 3) -j MASQUERADE
 
@@ -178,22 +203,43 @@ function destroy_containers() {
 
   sudo docker stop dnsmasq || true
   sudo docker rm dnsmasq || true
+
+
+  if [ -n "$USE_QEMU" ]; then
+    sudo docker stop dnsmasq-external || true
+    sudo docker rm dnsmasq-external || true
+  fi
 }
 
-# does DHCP/PXE
+# DHCP/PXE on the internal bridge
 function prepare_dnsmasq_conf() {
   local name="$(cluster_name)"
   [ -z "$name" ] && exit 1
 
   mkdir -p ~/"lokoctl-assets/${name}/dnsmasq"
   sed \
-    -e "s/{{DHCP_RANGE_LOW}}/$DHCP_RANGE_LOW/g" \
-    -e "s/{{DHCP_RANGE_HIGH}}/$DHCP_RANGE_HIGH/g" \
-    -e "s/{{DHCP_ROUTER_OPTION}}/$DHCP_ROUTER_OPTION/g" \
-    -e "s/{{DHCP_NETMASK}}/$DHCP_NETMASK/g" \
-    -e "s/{{BRIDGE_NAME}}/$BRIDGE_NAME/g" \
+    -e "s/{{DHCP_RANGE_LOW}}/$INTERNAL_DHCP_RANGE_LOW/g" \
+    -e "s/{{DHCP_RANGE_HIGH}}/$INTERNAL_DHCP_RANGE_HIGH/g" \
+    -e "s/{{DHCP_NETMASK}}/$INTERNAL_DHCP_NETMASK/g" \
+    -e "s/{{BRIDGE_NAME}}/$INTERNAL_BRIDGE_NAME/g" \
     -e "s/{{MATCHBOX}}/$(get_matchbox_ip_addr)/g" \
     < dnsmasq.conf.template > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf"
+}
+
+# regular DHCP on the external bridge (as libvirt would do)
+function prepare_dnsmasq_external_conf() {
+  local name="$(cluster_name)"
+  [ -z "$name" ] && exit 1
+
+  # TODO: add static IP addrs
+  mkdir -p ~/"lokoctl-assets/${name}/dnsmasq"
+  sed \
+    -e "s/{{DHCP_RANGE_LOW}}/$EXTERNAL_DHCP_RANGE_LOW/g" \
+    -e "s/{{DHCP_RANGE_HIGH}}/$EXTERNAL_DHCP_RANGE_HIGH/g" \
+    -e "s/{{DHCP_ROUTER_OPTION}}/$EXTERNAL_DHCP_ROUTER_OPTION/g" \
+    -e "s/{{DHCP_NETMASK}}/$EXTERNAL_DHCP_NETMASK/g" \
+    -e "s/{{BRIDGE_NAME}}/$EXTERNAL_BRIDGE_NAME/g" \
+    < dnsmasq-external.conf.template > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf"
 }
 
 function create_containers() {
@@ -218,6 +264,15 @@ function create_containers() {
     -d \
     --cap-add=NET_ADMIN \
     -v ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z" \
+    --net=host \
+    quay.io/coreos/dnsmasq:v0.5.0 -d
+
+  prepare_dnsmasq_external_conf
+
+  sudo docker run --name dnsmasq-external \
+    -d \
+    --cap-add=NET_ADMIN \
+    -v ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf:/etc/dnsmasq.conf:Z" \
     --net=host \
     quay.io/coreos/dnsmasq:v0.5.0 -d
 }
@@ -245,7 +300,7 @@ function create_nodes() {
     local -r common_virt_opts="--memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
     echo "Creating nodes..."
     for num in $(seq 1 $NUM_NODES); do
-      sudo virt-install --name "node${num}" --network=bridge:"${BRIDGE_NAME}",mac="${MAC_ADDRESS_LIST[$num - 1]}" ${common_virt_opts}
+      sudo virt-install --name "node${num}" --network=bridge:"${INTERNAL_BRIDGE_NAME}",mac="${MAC_ADDRESS_LIST[$num - 1]}"  --network=bridge:"${EXTERNAL_BRIDGE_NAME}" ${common_virt_opts}
     done
   else
     exit 1 # TODO: use ipmitool to force pxe
@@ -314,8 +369,6 @@ function gen_cluster_vars() {
   echo "worker_names = ${worker_names}" >> lokocfg.vars
   echo "matchbox_addr = \"$(get_matchbox_ip_addr)\"" >> lokocfg.vars
   echo "clc_snippets = ${clc_snippets}" >> lokocfg.vars
-  # TODO: network_ip_autodetection_method = "can-reach=$MATCHBOX_IP"
-  # TODO: kernel_args for matchbox ip=...
 }
 
 if [ "$1" = create ]; then
@@ -352,7 +405,7 @@ if [ "$1" = create ]; then
   gen_cluster_vars
 
   RET=0
-  # TODO: currently requires imran/baremetal-add-clc-snippets
+  # TODO: currently requires imran/baremetal-feature-parity
   "${HOME}"/kinvolk/lokomotive/lokoctl cluster apply --verbose --skip-components || RET=$?
 
   if [ "$RET" = 0 ]; then

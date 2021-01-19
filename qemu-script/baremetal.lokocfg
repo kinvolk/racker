@@ -17,6 +17,8 @@ cluster "bare-metal" {
   worker_names = var.worker_names
   # the user may append additional custom configs to the values: { for name, value in var.clc_snippets : name => concat(value, custom) }
   clc_snippets = { for name, paths in var.clc_snippets : name => [ for path in paths : file(path)] }
+  network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
+
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
   # of extra flags.
