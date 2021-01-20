@@ -1,12 +1,11 @@
 #/bin/sh -e
 
-# Setup the installer
-INSTALLER_DIR="$HOME/racker/"
-rm -rf $INSTALLER_DIR/*
+RUN_SCRIPT=racker-run.sh
 
-docker run -it -v $INSTALLER_DIR:/racker-ext:Z racker:latest
+docker run -it racker:latest > $RUN_SCRIPT
 
-# Run the installer
-pushd $INSTALLER_DIR > /dev/null
-./run.sh
-popd > /dev/null
+# Replace carriage return, which confuses the interpreter.
+sed -i 's/\r//g' $RUN_SCRIPT
+
+chmod a+x $RUN_SCRIPT
+./$RUN_SCRIPT
