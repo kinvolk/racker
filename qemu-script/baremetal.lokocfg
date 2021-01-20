@@ -19,6 +19,7 @@ cluster "bare-metal" {
   clc_snippets = { for name, paths in var.clc_snippets : name => [ for path in paths : file(path)] }
   network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
   kernel_args = ["flatcar.autologin"]
+  install_to_smallest_disk = "true"
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
