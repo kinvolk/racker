@@ -13,7 +13,6 @@ if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo "TODO: Make sure you disable any firewall, e.g., run sudo systemctl disable --now firewalld"
   exit 1
 fi
-# TODO: setup trap?
 
 SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
 cd "$SCRIPTFOLDER"
@@ -23,14 +22,25 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
-if [ "$(lokoctl version)" != "v0.5.0-335-g874975e9" ]; then
-  echo "Correct lokoctl version not found in PATH, compile it from the branch kai/baremetal"
+BRANCH="kai/baremetal"
+if [ "$(which lokoctl 2>/dev/null)" = "" ]; then
+ echo "No lokoctl version not found in PATH, compile it from the branch $BRANCH"
+ exit 1
+elif [ "$(lokoctl version)" != "v0.5.0-337-g874e6bfe" ]; then
+  echo "Incorrect lokoctl version found in PATH, compile it from the branch $BRANCH"
   exit 1
 fi
 
-ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+function cancel() {
+  echo "Canceling"
+  exit 1
+}
+trap cancel INT
 
-CONTROLLER_AMOUNT=1
+if [ -n "$USE_QEMU" ]; then
+  ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+fi
+
 SUBNET_PREFIX="172.24.213"
 if [ -n "$USE_QEMU" ]; then
   VM_MEMORY=2500
@@ -55,7 +65,8 @@ fi
 
 # TODO: generate these two files ("ordered", e.g., sorting alphabetically?), ARP ping or ssh into ToR switch (and exclude mgmt node itself), also get BMC MAC addrs
 MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
-NUM_NODES=${#MAC_ADDRESS_LIST[*]}
+CONTROLLER_AMOUNT="$(cat controller_macs | wc -l)"
+WORKER_AMOUNT="$(cat worker_macs | wc -l)"
 
 function get_matchbox_interface() {
   if [ -n "$USE_QEMU" ]; then
@@ -216,7 +227,6 @@ function prepare_dnsmasq_external_conf() {
   local name="$(cluster_name)"
   [ -z "$name" ] && exit 1
 
-  # TODO: add static IP addrs
   mkdir -p ~/"lokoctl-assets/${name}/dnsmasq"
   sed \
     -e "s/{{DHCP_RANGE_LOW}}/$EXTERNAL_DHCP_RANGE_LOW/g" \
@@ -265,30 +275,23 @@ function create_containers() {
 function destroy_nodes() {
   if [ -n "$USE_QEMU" ]; then
   echo "Destroying nodes..."
-  for num in $(seq 1 $NUM_NODES); do
-    sudo virsh destroy "node${num}" || true
-    sudo virsh undefine "node${num}" || true
+  for count in $(seq 1 $CONTROLLER_AMOUNT); do
+    sudo virsh destroy "controller${count}.$(cluster_name)" || true
+    sudo virsh undefine "controller${count}.$(cluster_name)" || true
+  done
+  for count in $(seq 1 $WORKER_AMOUNT); do
+    sudo virsh destroy "worker${count}.$(cluster_name)" || true
+    sudo virsh undefine "worker${count}.$(cluster_name)" || true
   done
 
   sudo virsh pool-refresh default
 
-  for num in $(seq 1 $NUM_NODES); do
-    sudo virsh vol-delete --pool default "node${num}.qcow2" || true
+  for count in $(seq 1 $CONTROLLER_AMOUNT); do
+    sudo virsh vol-delete --pool default "controller${count}.$(cluster_name).qcow2" || true
   done
-  fi
-}
-
-# TODO: later add the mgmt node vm
-function create_nodes() {
-  destroy_nodes
-  if [ -n "$USE_QEMU" ]; then
-    local -r common_virt_opts="--memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
-    echo "Creating nodes..."
-    for num in $(seq 1 $NUM_NODES); do
-      sudo virt-install --name "node${num}" --network=bridge:"${INTERNAL_BRIDGE_NAME}",mac="${MAC_ADDRESS_LIST[$num - 1]}"  --network=bridge:"${EXTERNAL_BRIDGE_NAME}" ${common_virt_opts}
-    done
-  else
-    exit 1 # TODO: use ipmitool to force pxe
+  for count in $(seq 1 $WORKER_AMOUNT); do
+    sudo virsh vol-delete --pool default "worker${count}.$(cluster_name).qcow2" || true
+  done
   fi
 }
 
@@ -354,6 +357,11 @@ function gen_cluster_vars() {
   echo "worker_names = ${worker_names}" >> lokocfg.vars
   echo "matchbox_addr = \"$(get_matchbox_ip_addr)\"" >> lokocfg.vars
   echo "clc_snippets = ${clc_snippets}" >> lokocfg.vars
+  if [ -n "$USE_QEMU" ]; then
+    echo "pxe_commands = \"sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network\"" >> lokocfg.vars
+  else
+    echo # TODO: use ipmitool
+  fi
 }
 
 if [ "$1" = create ]; then
@@ -365,21 +373,6 @@ if [ "$1" = create ]; then
   create_ssh_key
   create_containers
 
-  (
-    set -x
-    # Wait a bit for Terraform to provision Matchbox (done through `lokoctl cluster apply` below).
-    # This can be replaced with an approach like
-    # https://kinvolk.io/docs/flatcar-container-linux/latest/provisioning/terraform/#updating-the-user-data-in-place-and-rerunning-ignition-instead-of-destroying-nodes
-    # if it also falls back to ipmitool for PXE booting if the node is not reachable through SSH (yet)
-    while ! curl -f "http://$(get_matchbox_ip_addr):8080/ignition?mac=${MAC_ADDRESS_LIST[0]}" > /dev/null 2> /dev/null; do
-      sleep 1
-    done
-      create_nodes
-  ) >/tmp/bringup.log 2>&1 &
-
-  # TODO: use private IPs in null resource in lokomotive to reboot a node when the configuration changes (use ignition.config.url instead of local file):
-  # https://kinvolk.io/docs/flatcar-container-linux/latest/provisioning/terraform/#updating-the-user-data-in-place-and-rerunning-ignition-instead-of-destroying-nodes
-
   # TODO: after running flatcar-install, use ipmitool on the node itself to permanently disable network booting (and test if it is really permanent)
 
   if [ "$(ssh-add -L | grep "$(head -n 1 ~/.ssh/id_rsa.pub | cut -d ' ' -f 1-2)")" = "" ]; then
@@ -389,27 +382,9 @@ if [ "$1" = create ]; then
 
   gen_cluster_vars
 
-  RET=0
-  lokoctl cluster apply --verbose --skip-components || RET=$?
-
-  if [ "$RET" = 0 ]; then
-    PXERET=0
-    wait $! || {
-      err "Bring-up failed, the following logs may help:"
-      cat /tmp/bringup.log
-      PXERET=1
-      RET=1
-    }
-    if [ "$PXERET" = 0 ]; then
-      echo "Bring-up worked"
-      lokoctl component apply
-      echo "Now you can directly change the baremetal.lokocfg config and run: lokoctl cluster|component apply, this script here is not needed anymore (TODO: only once the terraform workaround is in place)"
-    fi
-  else
-    kill $! || { echo "Bring-up terminated" ;}
-    echo "Lokomotive failed"
-  fi
-  exit $RET
+  lokoctl cluster apply --verbose --skip-components
+  lokoctl component apply
+  echo "Now you can directly change the baremetal.lokocfg config and run: lokoctl cluster|component apply, this script here is not needed anymore"
 else
   if [ -n "$USE_QEMU" ]; then
     destroy_all

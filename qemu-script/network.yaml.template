@@ -19,5 +19,5 @@ storage:
       mode: 0644
       contents:
         inline: |
-          # Requires systemd-resolved for returning all addresses to gain HA for the api server
+          # Requires systemd-resolved used for kubectl/kubelet for returning all IP addresses in order to gain HA for the API server
 {{HOSTS}}

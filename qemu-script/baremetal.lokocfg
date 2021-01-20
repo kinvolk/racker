@@ -20,6 +20,7 @@ cluster "bare-metal" {
   network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
   kernel_args = ["flatcar.autologin"]
   install_to_smallest_disk = "true"
+  pxe_commands = var.pxe_commands
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
@@ -63,4 +64,8 @@ variable "worker_names" {
 
 variable "clc_snippets" {
   type = "map(list(string))"
+}
+
+variable "pxe_commands" {
+  type = "string"
 }
