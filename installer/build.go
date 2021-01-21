@@ -196,6 +196,7 @@ func buildImage() {
 func main() {
 	forceBuild := flag.Bool("force", false, "build even if there's already a tarball")
 	onlyBuild := flag.String("only", "", "build only these options: tarball or image")
+	confFilePath := flag.String("config", "./conf.yaml", "path to the configuration file")
 	flag.Parse()
 
 	buildTarball := *onlyBuild == "" || *onlyBuild == "tarball"
@@ -214,7 +215,7 @@ func main() {
 		log.Fatalf("Failed to create dir %v: %v", AssetsDir, err)
 	}
 
-	data, err := ioutil.ReadFile("./conf.yaml")
+	data, err := ioutil.ReadFile(*confFilePath)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
