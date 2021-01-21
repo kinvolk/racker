@@ -2,20 +2,18 @@
 
 set -euo pipefail
 
-# This script will be split appart, everything guarded with USE_QEMU is a dev helper while the rest goes on the mgmt node (possibly in a Docker image)
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
 fi
 
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-  echo "Usage: USE_QEMU=1 $0 create|destroy" # TODO: add something like create-image to embed an Ignition config into a Flatcar image for the mgmt node?
-  echo "TODO: Make sure you disable any firewall, e.g., run sudo systemctl disable --now firewalld"
+  echo "Usage: USE_QEMU=1 $0 create|destroy"
+  echo "Note: Make sure you disable any firewall for DHCP on the bridge, e.g. on Fedora, run sudo systemctl disable --now firewalld"
   exit 1
 fi
 
 SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
-cd "$SCRIPTFOLDER"
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "Please do not run as root, sudo will be used where necessary"
@@ -23,10 +21,10 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 BRANCH="kai/baremetal"
-if [ "$(which lokoctl 2>/dev/null)" = "" ]; then
+if [ "$(which lokoctl 2> /dev/null)" = "" ]; then
  echo "No lokoctl version not found in PATH, compile it from the branch $BRANCH"
  exit 1
-elif [ "$(lokoctl version)" != "v0.5.0-337-g874e6bfe" ]; then
+elif [ "$(lokoctl version)" != "v0.5.0-338-g399462194" ]; then
   echo "Incorrect lokoctl version found in PATH, compile it from the branch $BRANCH"
   exit 1
 fi
@@ -37,21 +35,35 @@ function cancel() {
 }
 trap cancel INT
 
-if [ -n "$USE_QEMU" ]; then
-  ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+if [ -z "$USE_QEMU" ]; then
+  ls controller_bmc_macs worker_bmc_macs > /dev/null || { echo "Add the BMC MAC addresses for each corresponding line in controller_macs and worker_macs to the files controller_bmc_macs and worker_bmc_macs" ; exit 1 ; }
+  ls ipmi_user ipmi_password > /dev/null || { echo "Add the IPMI user and the IPMI password to the files ipmi_user and ipmi_password" ; exit 1 ; }
 fi
 
-SUBNET_PREFIX="172.24.213"
+# optional
+SUBNET_PREFIX="$(cat subnet_prefix 2> /dev/null || true)"
+if [ "${SUBNET_PREFIX}" = "" ]; then
+  SUBNET_PREFIX="172.24.213"
+fi
+if [ -z "$USE_QEMU" ]; then
+  PXE_INTERFACE="$(cat pxe_interface || true)"
+  if [ "${PXE_INTERFACE}" = "" ]; then
+    echo "Specify an interface name or a PCI slot value (like 0000:01:00.0) in the file pxe_interface"
+    exit 1
+  fi
+fi
+
+INTERNAL_BRIDGE_SIZE="24"
+INTERNAL_BRIDGE_BROADCAST="${SUBNET_PREFIX}.255"
+INTERNAL_DHCP_RANGE_LOW="${SUBNET_PREFIX}.128" # use the second half for DHCP, the first for static addressing
+INTERNAL_DHCP_RANGE_HIGH="${SUBNET_PREFIX}.254"
+INTERNAL_DHCP_NETMASK="255.255.255.0"
 if [ -n "$USE_QEMU" ]; then
   VM_MEMORY=2500
   VM_DISK=10
   INTERNAL_BRIDGE_NAME="pxe0"
   INTERNAL_BRIDGE_ADDRESS="${SUBNET_PREFIX}.1" # the bridge IP address will also be used for the management node containers, later when run in a VM, .0 should be used or no address since the external bridge can also be used to reach the nodes
-  INTERNAL_BRIDGE_SIZE="24"
-  INTERNAL_BRIDGE_BROADCAST="${SUBNET_PREFIX}.255"
-  INTERNAL_DHCP_RANGE_LOW="${SUBNET_PREFIX}.128" # use the second half for DHCP, the first for static addressing
-  INTERNAL_DHCP_RANGE_HIGH="${SUBNET_PREFIX}.254"
-  INTERNAL_DHCP_NETMASK="255.255.255.0"
   # Set up Internet connectivity for the non-PXE interface of each VM
   EXTERNAL_BRIDGE_NAME="ext0"
   EXTERNAL_BRIDGE_ADDRESS="192.168.254.1"
@@ -63,22 +75,31 @@ if [ -n "$USE_QEMU" ]; then
   EXTERNAL_DHCP_ROUTER_OPTION="${EXTERNAL_BRIDGE_ADDRESS}"
 fi
 
-# TODO: generate these two files ("ordered", e.g., sorting alphabetically?), ARP ping or ssh into ToR switch (and exclude mgmt node itself), also get BMC MAC addrs
 MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
 CONTROLLER_AMOUNT="$(cat controller_macs | wc -l)"
 WORKER_AMOUNT="$(cat worker_macs | wc -l)"
+
+if [ -z "$USE_QEMU" ]; then
+  BMC_MAC_ADDRESS_LIST=($(cat controller_bmc_macs worker_bmc_macs))
+  IPMI_USER=$(cat ipmi_user)
+  IPMI_PASSWORD=$(cat ipmi_password)
+fi
 
 function get_matchbox_interface() {
   if [ -n "$USE_QEMU" ]; then
     echo "pxe0"
   else
-    exit 1 # TODO: find eth interface to use for mgmt node
+    if [[ "${PXE_INTERFACE}" == *:* ]]; then
+      grep -m 1 "PCI_SLOT_NAME=${PXE_INTERFACE}" /sys/class/net/*/device/uevent | cut -d / -f 5
+    else
+      echo "${PXE_INTERFACE}"
+    fi
   fi
 }
 
 # idea: pick a stable cluster name from a wordlist, based on the MAC addr of the mgmt node
 function cluster_name() {
-  shuf -n 1 --random-source=/sys/class/net/"$(get_matchbox_interface)"/address wordlist.txt
+  shuf -n 1 --random-source=/sys/class/net/"$(get_matchbox_interface)"/address "$SCRIPTFOLDER/wordlist.txt"
 }
 
 function get_client_cert_dir() {
@@ -89,8 +110,8 @@ function get_client_cert_dir() {
   echo "$p"
 }
 
-# Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte
-# Purpose is DHCP/PXE but also stable addressing of the nodes (TODO: the internal DHCP server using this should start at .128 and we return an error here for >=128)
+# Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte.
+# Purpose is DHCP/PXE but also stable addressing of the nodes.
 function calc_ip_addr() {
   local node_nr="$1"
   if [ "${node_nr}" -ge 128 ]; then
@@ -126,7 +147,7 @@ function create_network() {
 
     sudo ip link add name "${INTERNAL_BRIDGE_NAME}" address aa:bb:cc:dd:ee:ff type bridge
     sudo ip link set "${INTERNAL_BRIDGE_NAME}" up
-    # Use a stable MAC address because it's also the matchbox interface, and we want to calculate a cluster name from it # TODO: later create a VM with that MAC
+    # Use a stable MAC address because it's also the matchbox interface, and we want to calculate a cluster name from it # TODO: if a mode is added to create a mgmt VM, create the VM with that MAC
     sudo ip addr add dev "${INTERNAL_BRIDGE_NAME}" "${INTERNAL_BRIDGE_ADDRESS}/${INTERNAL_BRIDGE_SIZE}" broadcast "${INTERNAL_BRIDGE_BROADCAST}"
 
     # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway)
@@ -134,17 +155,28 @@ function create_network() {
     sudo iptables -t nat -A POSTROUTING -o $(ip route get 1 | grep -o -P ' dev .*? ' | cut -d ' ' -f 3) -j MASQUERADE
 
   else
-    exit 1 # TODO: make sure to set up the private IP addr (get_matchbox_ip_addr) before running (e.g., rewriting networkd files w/ static/DHCP, run networkctl reload)
+    sudo tee /etc/systemd/network/10-pxe.network <<-EOF
+	[Match]
+	Name=$(get_matchbox_interface)
+	[Link]
+	RequiredForOnline=no
+	[Address]
+	Address=$(get_matchbox_ip_addr)/${INTERNAL_BRIDGE_SIZE}
+	Scope=link
+	[Network]
+	DHCP=no
+	LinkLocalAddressing=no
+EOF
+    sudo networkctl reload
   fi
 }
 
 function create_certs() {
-  # TODO: maybe skip if existing ones can be kept
   local name="$(cluster_name)"
   [ -z "$name" ] && exit 1
   local server_dir=~/"lokoctl-assets/${name}/matchbox/certs"
   local cert_dir="$(get_client_cert_dir)"
-  pushd scripts/tls 1>/dev/null
+  pushd "$SCRIPTFOLDER/scripts/tls" 1>/dev/null
 
   echo "Generating certificates. Check scripts/tls/cert-gen.log for details"
 
@@ -189,8 +221,7 @@ function get_assets() {
     fi
   fi
 
-  scripts/get-flatcar stable current "${DOWNLOAD_DIR}"
-  # TODO: pre-download terraform providers, docker images?
+  "$SCRIPTFOLDER/scripts/get-flatcar" stable current "${DOWNLOAD_DIR}"
 }
 
 function destroy_containers() {
@@ -199,7 +230,6 @@ function destroy_containers() {
 
   sudo docker stop dnsmasq || true
   sudo docker rm dnsmasq || true
-
 
   if [ -n "$USE_QEMU" ]; then
     sudo docker stop dnsmasq-external || true
@@ -217,9 +247,9 @@ function prepare_dnsmasq_conf() {
     -e "s/{{DHCP_RANGE_LOW}}/$INTERNAL_DHCP_RANGE_LOW/g" \
     -e "s/{{DHCP_RANGE_HIGH}}/$INTERNAL_DHCP_RANGE_HIGH/g" \
     -e "s/{{DHCP_NETMASK}}/$INTERNAL_DHCP_NETMASK/g" \
-    -e "s/{{BRIDGE_NAME}}/$INTERNAL_BRIDGE_NAME/g" \
+    -e "s/{{BRIDGE_NAME}}/$(get_matchbox_interface)/g" \
     -e "s/{{MATCHBOX}}/$(get_matchbox_ip_addr)/g" \
-    < dnsmasq.conf.template > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf"
+    < "$SCRIPTFOLDER/dnsmasq.conf.template" > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf"
 }
 
 # regular DHCP on the external bridge (as libvirt would do)
@@ -234,7 +264,7 @@ function prepare_dnsmasq_external_conf() {
     -e "s/{{DHCP_ROUTER_OPTION}}/$EXTERNAL_DHCP_ROUTER_OPTION/g" \
     -e "s/{{DHCP_NETMASK}}/$EXTERNAL_DHCP_NETMASK/g" \
     -e "s/{{BRIDGE_NAME}}/$EXTERNAL_BRIDGE_NAME/g" \
-    < dnsmasq-external.conf.template > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf"
+    < "$SCRIPTFOLDER/dnsmasq-external.conf.template" > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf"
 }
 
 function create_containers() {
@@ -243,25 +273,74 @@ function create_containers() {
   [ -z "$name" ] && exit 1
 
   mkdir -p ~/"lokoctl-assets/${name}/matchbox/groups"
-  docker run --name matchbox \
+  MATCHBOX_CMD="docker run --name matchbox \
     -d \
     --net=host \
-    -v ~/"lokoctl-assets/$(cluster_name)/matchbox/certs:/etc/matchbox:Z" \
-    -v ~/"lokoctl-assets/$(cluster_name)/matchbox/assets:/var/lib/matchbox/assets:Z" \
-    -v ~/"lokoctl-assets/$(cluster_name)/matchbox:/var/lib/matchbox" \
-    -v ~/"lokoctl-assets/$(cluster_name)/matchbox/groups:/var/lib/matchbox/groups" \
-    quay.io/coreos/matchbox:v0.7.0 "-address=$(get_matchbox_ip_addr):8080" \
-    -log-level=debug "-rpc-address=$(get_matchbox_ip_addr):8081"
+    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/certs:/etc/matchbox:Z \
+    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/assets:/var/lib/matchbox/assets:Z \
+    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox:/var/lib/matchbox \
+    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/groups:/var/lib/matchbox/groups \
+    quay.io/coreos/matchbox:v0.7.0 -address=$(get_matchbox_ip_addr):8080 \
+    -log-level=debug -rpc-address=$(get_matchbox_ip_addr):8081"
+  if [ -n "$USE_QEMU" ]; then
+    $MATCHBOX_CMD
+  else
+    sudo tee /etc/systemd/system/matchbox.service <<-EOF
+	[Unit]
+	Description=matchbox server for PXE images and Ignition configuration
+	Wants=docker.service
+	After=docker.service
+	[Service]
+	Type=simple
+	Restart=always
+	RestartSec=5s
+	TimeoutStartSec=0
+	ExecStartPre=-docker rm -f matchbox
+	ExecStartPre=${MATCHBOX_CMD}
+	ExecStart=docker logs -f matchbox
+	ExecStop=docker stop matchbox
+	ExecStopPost=docker rm matchbox
+	[Install]
+	WantedBy=multi-user.target
+EOF
+    sudo systemctl enable matchbox.service
+    sudo systemctl restart matchbox.service
+  fi
 
   prepare_dnsmasq_conf
 
-  sudo docker run --name dnsmasq \
+  DNSMASQ_CMD="docker run --name dnsmasq \
     -d \
     --cap-add=NET_ADMIN \
-    -v ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z" \
+    -v $HOME/lokoctl-assets/${name}/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z \
     --net=host \
-    quay.io/coreos/dnsmasq:v0.5.0 -d
+    quay.io/coreos/dnsmasq:v0.5.0 -d"
+  if [ -n "$USE_QEMU" ]; then
+    sudo ${DNSMASQ_CMD}
+  else
+    sudo tee /etc/systemd/system/dnsmasq.service <<-EOF
+	[Unit]
+	Description=dnsmasq DHCP/PXE/TFTP server
+	Wants=docker.service
+	After=docker.service
+	[Service]
+	Type=simple
+	Restart=always
+	RestartSec=5s
+	TimeoutStartSec=0
+	ExecStartPre=-docker rm -f dnsmasq
+	ExecStartPre=${DNSMASQ_CMD}
+	ExecStart=docker logs -f dnsmasq
+	ExecStop=docker stop dnsmasq
+	ExecStopPost=docker rm dnsmasq
+	[Install]
+	WantedBy=multi-user.target
+EOF
+    sudo systemctl enable dnsmasq.service
+    sudo systemctl restart dnsmasq.service
+  fi
 
+  if [ -n "$USE_QEMU" ]; then
   prepare_dnsmasq_external_conf
 
   sudo docker run --name dnsmasq-external \
@@ -270,6 +349,7 @@ function create_containers() {
     -v ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf:/etc/dnsmasq.conf:Z" \
     --net=host \
     quay.io/coreos/dnsmasq:v0.5.0 -d
+  fi
 }
 
 function destroy_nodes() {
@@ -337,7 +417,7 @@ function gen_cluster_vars() {
       worker_names+="\"${id}\", "
     fi
     clc_snippets+="\"${id}\" = [\"${id}.yaml\"]"$'\n'
-    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" <network.yaml.template >"${id}.yaml"
+    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" < "$SCRIPTFOLDER/network.yaml.template" >"${id}.yaml"
     if [ "$name" = "controller" ] && [ "$count" = "${CONTROLLER_AMOUNT}" ]; then
       count=0
       name="worker"
@@ -360,7 +440,41 @@ function gen_cluster_vars() {
   if [ -n "$USE_QEMU" ]; then
     echo "pxe_commands = \"sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network\"" >> lokocfg.vars
   else
-    echo # TODO: use ipmitool
+    local mapping=""
+    for i in $(seq 0 $((${CONTROLLER_AMOUNT} + ${WORKER_AMOUNT} - 1))); do
+      mapping+="      ${MAC_ADDRESS_LIST[i]})
+        bmcmac=${BMC_MAC_ADDRESS_LIST[i]}
+        bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface $(get_matchbox_interface) | grep -m 1 \$bmcmac | cut -f 1\")
+        docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power reset\"
+        while [ \$count -gt 0 ] && ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 core@\$domain true; do
+          sleep 1
+          count=\$((count - 1))
+        done
+        count=300
+        if [ \$count -eq 0 ]; then
+          echo \"error: failed waiting with SSH for \$domain installer to came up to disable PXE booting\"
+          exit 1
+        else
+          docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev disk options=persistent\"
+          echo \"disabled PXE booting for \$domain\"
+        fi
+        ;;
+"
+    done
+    tee -a lokocfg.vars <<-EOF
+	pxe_commands = <<EOT
+	case \$mac in
+	$mapping
+	      *)
+	        echo "BMC MAC address not found"
+	        exit 1
+	esac
+	EOT
+EOF
+  fi
+
+  if ! cmp --silent "$SCRIPTFOLDER/baremetal.lokocfg" baremetal.lokocfg; then
+    cp "$SCRIPTFOLDER/baremetal.lokocfg" ./
   fi
 }
 
@@ -372,8 +486,6 @@ if [ "$1" = create ]; then
   create_certs
   create_ssh_key
   create_containers
-
-  # TODO: after running flatcar-install, use ipmitool on the node itself to permanently disable network booting (and test if it is really permanent)
 
   if [ "$(ssh-add -L | grep "$(head -n 1 ~/.ssh/id_rsa.pub | cut -d ' ' -f 1-2)")" = "" ]; then
     eval "$(ssh-agent)"
