@@ -1,18 +1,8 @@
 modules:
   - name: lokomotive
     assets:
-    - url: https://github.com/kinvolk/lokomotive/releases/download/v0.5.0/lokoctl_0.5.0_linux_amd64.tar.gz
-      sha256: 8d77fcd74cf7a01d7ff52a794a3bb234119076da8bd28acfb71af3d2d3bc1285
-      dest-filename: "lokoctl.tar.gz"
+    - type: git
+      url: https://github.com/kinvolk/lokomotive.git
+      branch: "kai/baremetal"
     build-commands:
-      - mkdir -p ./tmp
-      - mv lokoctl.tar.gz tmp/
-      - cd tmp && tar xvzf lokoctl.tar.gz --strip-components 1
-      - cp ./tmp/lokoctl .
-      - rm -rf tmp/
-  - name: flatcar
-    assets:
-    # This is an example to test the cache only
-    - url: https://github.com/kinvolk/lokomotive/releases/download/v0.5.0/lokoctl_0.5.0_linux_amd64.tar.gz
-      sha256: 8d77fcd74cf7a01d7ff52a794a3bb234119076da8bd28acfb71af3d2d3bc1285
-      dest-filename: "lokoctl.tar.gz"
+      - cd lokomotive && make && cp lokoctl ../ && cd .. && rm -rf lokomotive
