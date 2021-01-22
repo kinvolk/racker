@@ -1,0 +1,71 @@
+cluster "bare-metal" {
+  asset_dir                 = pathexpand("~/lokoctl-assets/${var.cluster_name}")
+  ssh_pubkeys               = [file(pathexpand("~/.ssh/id_rsa.pub"))]
+  cached_install            = "true"
+  matchbox_ca_path          = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/ca.crt")
+  matchbox_client_cert_path = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/client.crt")
+  matchbox_client_key_path  = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/client.key")
+  matchbox_endpoint         = "${var.matchbox_addr}:8081"
+  matchbox_http_endpoint    = "http://${var.matchbox_addr}:8080"
+  cluster_name              = var.cluster_name
+  k8s_domain_name           = "controller.${var.cluster_name}"
+  controller_domains = var.controller_names
+  controller_macs = var.controller_macs
+  controller_names = var.controller_names
+  worker_domains = var.worker_names
+  worker_macs = var.worker_macs
+  worker_names = var.worker_names
+  # the user may append additional custom configs to the values: { for name, value in var.clc_snippets : name => concat(value, custom) }
+  clc_snippets = { for name, paths in var.clc_snippets : name => [ for path in paths : file(path)] }
+  network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
+  kernel_args = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8", "flatcar.autologin"]
+  install_to_smallest_disk = "true"
+  pxe_commands = var.pxe_commands
+
+  # Adds oidc flags to API server with default values.
+  # Acts as a smoke test to check if API server is functional after addition
+  # of extra flags.
+  # oidc {}
+
+  labels = {
+    "testing.io" = "yes",
+    "roleofnode" = "testing",
+  }
+
+  conntrack_max_per_core = 65000
+}
+
+component "flatcar-linux-update-operator" {}
+
+
+variable "cluster_name" {
+  type = "string"
+}
+
+variable "matchbox_addr" {
+  type = "string"
+}
+
+variable "controller_macs" {
+  type = "list(string)"
+}
+
+variable "controller_names" {
+  type = "list(string)"
+}
+
+variable "worker_macs" {
+  type = "list(string)"
+}
+
+variable "worker_names" {
+  type = "list(string)"
+}
+
+variable "clc_snippets" {
+  type = "map(list(string))"
+}
+
+variable "pxe_commands" {
+  type = "string"
+}

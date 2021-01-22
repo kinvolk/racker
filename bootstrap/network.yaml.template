@@ -1,0 +1,23 @@
+networkd:
+  units:
+    - name: 10-priv-stable.network
+      contents: |
+        [Match]
+        MACAddress={{MAC}}
+        [Link]
+        RequiredForOnline=no
+        [Address]
+        Address={{IP_ADDRESS}}/24
+        Scope=link
+        [Network]
+        DHCP=no
+        LinkLocalAddressing=no
+storage:
+  files:
+    - path: /etc/hosts
+      filesystem: root
+      mode: 0644
+      contents:
+        inline: |
+          # Requires systemd-resolved used for kubectl/kubelet for returning all IP addresses in order to gain HA for the API server
+{{HOSTS}}

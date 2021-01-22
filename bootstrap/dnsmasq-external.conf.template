@@ -1,0 +1,12 @@
+# dnsmasq.conf
+
+no-daemon
+dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}}
+dhcp-option=3,{{DHCP_ROUTER_OPTION}}
+
+log-queries
+log-dhcp
+
+except-interface=lo
+interface={{BRIDGE_NAME}}
+bind-interfaces
