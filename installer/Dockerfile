@@ -1,4 +1,8 @@
-FROM alpine:3.12.0 as racker-build
+ARG BASE_IMAGE=debian:stable-slim
+FROM $BASE_IMAGE as racker-build
+
+RUN apt-get update
+RUN apt-get -y install arp-scan ipmitool
 
 ARG RACKER_TARBALL=racker.tar.gz
 ENV RACKER_TARBALL=$RACKER_TARBALL
