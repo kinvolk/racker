@@ -8,10 +8,14 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
+
+	"github.com/mitchellh/mapstructure"
 
 	"gopkg.in/yaml.v2"
 )
@@ -22,17 +26,29 @@ const (
 	InstallerTarball = "racker.tar.gz"
 )
 
-type Asset struct {
+type FileAsset struct {
 	URL          string   `yaml:"url,omitempty"`
 	Sha256       string   `yaml:",omitempty"`
 	Shell        []string `yaml:",omitempty"`
 	DestFilename string   `yaml:"dest-filename,omitempty"`
 }
 
+type Asset struct {
+	Type string `yaml:",omitempty"`
+}
+
+type GitAsset struct {
+	Asset
+	URL    string `yaml:",omitempty"`
+	Branch string `yaml:",omitempty"`
+	Name   string `yaml:",omitempty"`
+}
+
 type Module struct {
+	Asset
 	Name          string
-	Assets        []Asset  `yaml:",omitempty"`
-	BuildCommands []string `yaml:"build-commands,omitempty"`
+	Assets        []map[string]interface{} `yaml:",omitempty"`
+	BuildCommands []string                 `yaml:"build-commands,omitempty"`
 }
 
 type InstallerConf struct {
@@ -95,7 +111,12 @@ func copyFile(src string, dst string) {
 	}
 }
 
-func fetchAssetFromURL(moduleDir string, asset Asset) {
+func fetchAssetFromURL(moduleDir string, assetIface interface{}) {
+	asset := FileAsset{}
+	if err := decodeAsset(assetIface, &asset); err != nil {
+		log.Fatalf("Failed to decode module: %v", err)
+	}
+
 	destfileName := asset.DestFilename
 	if destfileName == "" {
 		destfileName = path.Base(asset.URL)
@@ -125,16 +146,76 @@ func fetchAssetFromURL(moduleDir string, asset Asset) {
 	copyFile(dest, path.Join(moduleDir, destfileName))
 }
 
+func gitClone(url string, branch string, repoFolder string) error {
+	cmd := exec.Command("git", "clone", url, "--branch", branch, "--depth", "1", "--single-branch", repoFolder)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+func fetchGitAsset(moduleDir string, assetIface interface{}) {
+	asset := GitAsset{}
+	if err := decodeAsset(assetIface, &asset); err != nil {
+		log.Fatalf("Failed to decode module: %v", err)
+	}
+
+	parsedURL, err := url.Parse(asset.URL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	branch := asset.Branch
+	if branch == "" {
+		branch = "main"
+	}
+
+	name := asset.Name
+	if name == "" {
+		name = strings.Split(path.Base(parsedURL.Path), ".")[0]
+	}
+
+	if err := gitClone(asset.URL, branch, path.Join(moduleDir, name)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func reportIncompatibleModule(asset interface{}) {
+	d, err := yaml.Marshal(asset)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+
+	log.Fatalf("Module not compatible:\n%v", string(d))
+}
+
+func decodeAsset(assetIface interface{}, asset interface{}) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName: "yaml",
+		Result:  asset,
+	})
+	if err != nil {
+		return err
+	}
+
+	err = decoder.Decode(assetIface)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func runModule(moduleDir string, module Module) {
-	for _, asset := range module.Assets {
-		if asset.URL != "" {
-			fetchAssetFromURL(moduleDir, asset)
-		} else {
-			d, err := yaml.Marshal(asset)
-			if err != nil {
-				log.Fatalf("error: %v", err)
-			}
-			log.Fatalf("Module not compatible:\n%v", string(d))
+	for _, assetIface := range module.Assets {
+		typeName, _ := assetIface["type"].(string)
+		switch typeName {
+		case "file":
+			fetchAssetFromURL(moduleDir, assetIface)
+		case "git":
+			fetchGitAsset(moduleDir, assetIface)
+		default:
+			reportIncompatibleModule(assetIface)
 		}
 	}
 }
