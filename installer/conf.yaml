@@ -1,0 +1,8 @@
+modules:
+  - name: lokomotive
+    assets:
+    - type: git
+      url: https://github.com/kinvolk/lokomotive.git
+      branch: "kai/baremetal"
+    build-commands:
+      - cd lokomotive && make && cp lokoctl ../ && cd .. && rm -rf lokomotive
