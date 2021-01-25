@@ -24,7 +24,7 @@ BRANCH="kai/baremetal"
 if [ "$(which lokoctl 2> /dev/null)" = "" ]; then
  echo "No lokoctl version not found in PATH, compile it from the branch $BRANCH"
  exit 1
-elif [ "$(lokoctl version)" != "v0.5.0-338-g399462194" ]; then
+elif [ "$(lokoctl version)" != "v0.5.0-340-g119c963e0" ]; then
   echo "Incorrect lokoctl version found in PATH, compile it from the branch $BRANCH"
   exit 1
 fi
@@ -438,25 +438,45 @@ function gen_cluster_vars() {
   echo "matchbox_addr = \"$(get_matchbox_ip_addr)\"" >> lokocfg.vars
   echo "clc_snippets = ${clc_snippets}" >> lokocfg.vars
   if [ -n "$USE_QEMU" ]; then
+    echo 'kernel_console = []' >> lokocfg.vars
+    echo 'install_pre_reboot_cmds = ""' >> lokocfg.vars
     echo "pxe_commands = \"sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network\"" >> lokocfg.vars
   else
+    echo 'kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]' >> lokocfg.vars
+    echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm debian sh -c 'apt update && apt install -y ipmitool && ipmitool chassis bootdev disk options=persistent'\"" >> lokocfg.vars
     local mapping=""
     for i in $(seq 0 $((${CONTROLLER_AMOUNT} + ${WORKER_AMOUNT} - 1))); do
       mapping+="      ${MAC_ADDRESS_LIST[i]})
         bmcmac=${BMC_MAC_ADDRESS_LIST[i]}
-        bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface $(get_matchbox_interface) | grep -m 1 \$bmcmac | cut -f 1\")
-        docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power reset\"
-        while [ \$count -gt 0 ] && ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 core@\$domain true; do
-          sleep 1
+        bmcipaddr=""
+        step="poweroff"
+        count=60
+        while [ \$count -gt 0 ]; do
           count=\$((count - 1))
+          sleep 1
+          if [ \"\$bmcipaddr\" = \"\" ]; then
+            bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface $(get_matchbox_interface) | grep -m 1 \$bmcmac | cut -f 1\")
+          fi
+          if [ \"\$bmcipaddr\" = \"\" ]; then
+            continue
+          fi
+          if [ \"\$step\" = poweroff ]; then
+            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off\" || continue
+            step=bootdev
+            continue
+          elif [ \"\$step\" = bootdev ]; then
+            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe\" || continue
+            step=poweron
+            continue
+          else
+            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on\" || continue
+            break
+          fi
+          break # not reached
         done
-        count=300
         if [ \$count -eq 0 ]; then
-          echo \"error: failed waiting with SSH for \$domain installer to came up to disable PXE booting\"
+          echo \"error: failed forcing a PXE boot for \$domain installer\"
           exit 1
-        else
-          docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev disk options=persistent\"
-          echo \"disabled PXE booting for \$domain\"
         fi
         ;;
 "

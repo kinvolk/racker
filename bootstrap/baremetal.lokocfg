@@ -18,9 +18,11 @@ cluster "bare-metal" {
   # the user may append additional custom configs to the values: { for name, value in var.clc_snippets : name => concat(value, custom) }
   clc_snippets = { for name, paths in var.clc_snippets : name => [ for path in paths : file(path)] }
   network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
-  kernel_args = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8", "flatcar.autologin"]
+  kernel_args = ["flatcar.autologin"]
+  kernel_console = var.kernel_console
   install_to_smallest_disk = "true"
   pxe_commands = var.pxe_commands
+  install_pre_reboot_cmds = var.install_pre_reboot_cmds
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
@@ -67,5 +69,13 @@ variable "clc_snippets" {
 }
 
 variable "pxe_commands" {
+  type = "string"
+}
+
+variable "kernel_console" {
+  type = "string"
+}
+
+variable "install_pre_reboot_cmds" {
   type = "string"
 }

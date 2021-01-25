@@ -1,7 +1,7 @@
 # dnsmasq.conf
 
 no-daemon
-dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}}
+dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}},infinite
 
 enable-tftp
 tftp-root=/var/lib/tftpboot
