@@ -28,6 +28,7 @@ const (
 
 type FileAsset struct {
 	URL          string   `yaml:"url,omitempty"`
+	Path         string   `yaml:",omitempty"`
 	Sha256       string   `yaml:",omitempty"`
 	Shell        []string `yaml:",omitempty"`
 	DestFilename string   `yaml:"dest-filename,omitempty"`
@@ -100,28 +101,18 @@ func downloadFile(url string, filename string) {
 	}
 }
 
-func copyFile(src string, dst string) {
-	cmd := exec.Command("cp", src, dst)
+func copyFileOrDir(src string, dst string) {
+	cmd := exec.Command("cp", "-rf", src, dst)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
 	if err != nil {
-		log.Fatalf("Failed to copy file %v -> %v: %v", src, dst, err)
+		log.Fatalf("Failed to copy file or dir %v -> %v: %v", src, dst, err)
 	}
 }
 
-func fetchAssetFromURL(moduleDir string, assetIface interface{}) {
-	asset := FileAsset{}
-	if err := decodeAsset(assetIface, &asset); err != nil {
-		log.Fatalf("Failed to decode module: %v", err)
-	}
-
-	destfileName := asset.DestFilename
-	if destfileName == "" {
-		destfileName = path.Base(asset.URL)
-	}
-
+func fetchAssetFromURL(asset FileAsset) string {
 	dest, err := filepath.Abs(path.Join(AssetsDir, path.Base(asset.URL)+"-"+asset.Sha256))
 	if err != nil {
 		log.Fatal(err)
@@ -143,7 +134,35 @@ func fetchAssetFromURL(moduleDir string, assetIface interface{}) {
 		log.Fatal(err)
 	}
 
-	copyFile(dest, path.Join(moduleDir, destfileName))
+	return dest
+}
+
+func fetchFileAsset(moduleDir string, assetIface interface{}) {
+	asset := FileAsset{}
+	if err := decodeAsset(assetIface, &asset); err != nil {
+		log.Fatalf("Failed to decode module: %v", err)
+	}
+
+	destfileName := asset.DestFilename
+	if destfileName == "" {
+		p := asset.Path
+		if p == "" {
+			p = asset.URL
+		}
+		destfileName = path.Base(p)
+	}
+
+	dest := asset.Path
+
+	if asset.URL != "" {
+		if dest != "" {
+			log.Println("Please use either 'path' or 'url' in a file type module")
+			reportIncompatibleModule(assetIface)
+		}
+		dest = fetchAssetFromURL(asset)
+	}
+
+	copyFileOrDir(dest, path.Join(moduleDir, destfileName))
 }
 
 func gitClone(url string, branch string, repoFolder string) error {
@@ -211,7 +230,7 @@ func runModule(moduleDir string, module Module) {
 		typeName, _ := assetIface["type"].(string)
 		switch typeName {
 		case "file":
-			fetchAssetFromURL(moduleDir, assetIface)
+			fetchFileAsset(moduleDir, assetIface)
 		case "git":
 			fetchGitAsset(moduleDir, assetIface)
 		default:
@@ -249,7 +268,7 @@ func build(data InstallerConf) error {
 		return err
 	}
 
-	copyFile(entryScript, path.Join(dir, "run.sh"))
+	copyFileOrDir(entryScript, path.Join(dir, "run.sh"))
 
 	cmd := exec.Command("tar", "-C", dir, "-cvzf", InstallerTarball, ".")
 	cmd.Stdout = os.Stdout
