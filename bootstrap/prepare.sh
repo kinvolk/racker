@@ -24,9 +24,6 @@ BRANCH="kai/baremetal"
 if [ "$(which lokoctl 2> /dev/null)" = "" ]; then
  echo "No lokoctl version not found in PATH, compile it from the branch $BRANCH"
  exit 1
-elif [ "$(lokoctl version)" != "v0.5.0-340-g119c963e0" ]; then
-  echo "Incorrect lokoctl version found in PATH, compile it from the branch $BRANCH"
-  exit 1
 fi
 
 function cancel() {
