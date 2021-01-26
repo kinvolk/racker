@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
+CONTROLLER_TYPE=${CONTROLLER_TYPE:-""} # an empty string means any node type
+SUBNET_PREFIX=${SUBNET_PREFIX:-"172.24.213"}
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
@@ -20,9 +23,8 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
-BRANCH="kai/baremetal"
 if [ "$(which lokoctl 2> /dev/null)" = "" ]; then
- echo "No lokoctl version not found in PATH, compile it from the branch $BRANCH"
+ echo "lokoctl version not found in PATH"
  exit 1
 fi
 
@@ -32,24 +34,48 @@ function cancel() {
 }
 trap cancel INT
 
-ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
-if [ -z "$USE_QEMU" ]; then
-  ls controller_bmc_macs worker_bmc_macs > /dev/null || { echo "Add the BMC MAC addresses for each corresponding line in controller_macs and worker_macs to the files controller_bmc_macs and worker_bmc_macs" ; exit 1 ; }
-  ls ipmi_user ipmi_password > /dev/null || { echo "Add the IPMI user and the IPMI password to the files ipmi_user and ipmi_password" ; exit 1 ; }
-fi
-
-# optional
-SUBNET_PREFIX="$(cat subnet_prefix 2> /dev/null || true)"
-if [ "${SUBNET_PREFIX}" = "" ]; then
-  SUBNET_PREFIX="172.24.213"
-fi
-if [ -z "$USE_QEMU" ]; then
-  PXE_INTERFACE="$(cat pxe_interface || true)"
-  if [ "${PXE_INTERFACE}" = "" ]; then
-    echo "Specify an interface name or a PCI slot value (like 0000:01:00.0) in the file pxe_interface"
+if [ -n "$USE_QEMU" ]; then
+  ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
+  if [ "$CONTROLLER_AMOUNT" != "$(cat controller_macs | wc -l)" ]; then
+    echo "wrong amount of controller nodes found (check CONTROLLER_AMOUNT)"
     exit 1
   fi
+  WORKER_AMOUNT="$(cat worker_macs | wc -l)"
+  CONTROLLERS_MAC=($(cat controller_macs))
+  MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
+  FULL_MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
+else
+  ls /usr/share/oem/nodes.csv > /dev/null || { echo "The rack metadata file in /usr/share/oem/nodes.csv is missing" ; exit 1 ; }
+  ls /usr/share/oem/ipmi_user /usr/share/oem/ipmi_password > /dev/null || { echo "The IPMI user and the IPMI password files /usr/share/oem/ipmi_user and /usr/share/oem/ipmi_password are missing" ; exit 1 ; }
+  IPMI_USER=$(cat /usr/share/oem/ipmi_user)
+  IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
+  PXE_INTERFACE="$(cat /usr/share/oem/pxe_interface || true)"
+  if [ "${PXE_INTERFACE}" = "" ]; then
+    echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+    exit 1
+  fi
+  if [[ "${PXE_INTERFACE}" == *:* ]]; then
+    PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
+  fi
+  # Skip header line, filter out the management node itself and sort by MAC address
+  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
+  FULL_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 1)) # sorted MAC addresses will be used to assign the IP addresses
+  FULL_BMC_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 2))
+  CONTROLLERS="$(echo "$NODES" | grep -m "$CONTROLLER_AMOUNT" "[ ,]$CONTROLLER_TYPE")"
+  if [ "$(echo "$CONTROLLERS" | wc -l)" != "$CONTROLLER_AMOUNT" ]; then
+    echo "wrong amount of controller nodes found (check the CONTROLLER_TYPE and CONTROLLER_AMOUNT)"
+    exit 1
+  fi
+  WORKERS="$(echo "$NODES" | grep -v -F -x -f <(echo "$CONTROLLERS"))"
+  CONTROLLERS_MAC=($(echo "$CONTROLLERS" | cut -d , -f 1))
+  CONTROLLERS_BMC_MAC=($(echo "$CONTROLLERS" | cut -d , -f 2))
+  WORKERS_MAC=($(echo "$WORKERS" | cut -d , -f 1))
+  WORKERS_BMC_MAC=($(echo "$WORKERS" | cut -d , -f 2))
+  MAC_ADDRESS_LIST=(${CONTROLLERS_MAC[*]} ${WORKERS_MAC[*]})
+  BMC_MAC_ADDRESS_LIST=(${CONTROLLERS_BMC_MAC[*]} ${WORKERS_BMC_MAC[*]})
+  WORKER_AMOUNT=$((${#MAC_ADDRESS_LIST[*]} - CONTROLLER_AMOUNT))
 fi
+
 
 INTERNAL_BRIDGE_SIZE="24"
 INTERNAL_BRIDGE_BROADCAST="${SUBNET_PREFIX}.255"
@@ -72,25 +98,11 @@ if [ -n "$USE_QEMU" ]; then
   EXTERNAL_DHCP_ROUTER_OPTION="${EXTERNAL_BRIDGE_ADDRESS}"
 fi
 
-MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
-CONTROLLER_AMOUNT="$(cat controller_macs | wc -l)"
-WORKER_AMOUNT="$(cat worker_macs | wc -l)"
-
-if [ -z "$USE_QEMU" ]; then
-  BMC_MAC_ADDRESS_LIST=($(cat controller_bmc_macs worker_bmc_macs))
-  IPMI_USER=$(cat ipmi_user)
-  IPMI_PASSWORD=$(cat ipmi_password)
-fi
-
 function get_matchbox_interface() {
   if [ -n "$USE_QEMU" ]; then
     echo "pxe0"
   else
-    if [[ "${PXE_INTERFACE}" == *:* ]]; then
-      grep -m 1 "PCI_SLOT_NAME=${PXE_INTERFACE}" /sys/class/net/*/device/uevent | cut -d / -f 5
-    else
-      echo "${PXE_INTERFACE}"
-    fi
+    echo "${PXE_INTERFACE}"
   fi
 }
 
@@ -107,10 +119,18 @@ function get_client_cert_dir() {
   echo "$p"
 }
 
-# Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte.
+# Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte, start with .2 for the first node (the management node is always .1).
 # Purpose is DHCP/PXE but also stable addressing of the nodes.
 function calc_ip_addr() {
-  local node_nr="$1"
+  local node_mac="$1"
+  local node_nr=2
+
+  for mac in ${FULL_MAC_ADDRESS_LIST[*]}; do
+    if [ "$mac" = "$node_mac" ]; then
+      break
+    fi
+    let node_nr+=1
+  done
   if [ "${node_nr}" -ge 128 ]; then
     exit 1
   fi
@@ -118,7 +138,7 @@ function calc_ip_addr() {
 }
 
 function get_matchbox_ip_addr() {
-  calc_ip_addr 1
+  echo "${SUBNET_PREFIX}.1"
 }
 
 function destroy_network() {
@@ -390,7 +410,6 @@ function add_to_etc_hosts() {
 
 function gen_cluster_vars() {
   local count=1
-  local ip_addr_suffix=2 # start with .2, the .1 address belongs to the mgmt node
   local name="controller"
   local controller_macs="["
   local worker_macs="["
@@ -400,12 +419,14 @@ function gen_cluster_vars() {
   local ip_address=""
   local controller_hosts=""
   local id=""
-  for i in $(seq 1 ${CONTROLLER_AMOUNT}); do
-    controller_hosts+="          $(calc_ip_addr $(( i + 1 ))) controller.$(cluster_name) controller${i}.$(cluster_name)\n"
-    add_to_etc_hosts "$(calc_ip_addr $(( i + 1 )))" "controller.$(cluster_name)"
+  local j=1
+  for mac in ${CONTROLLERS_MAC[*]}; do
+    controller_hosts+="          $(calc_ip_addr $mac) controller.$(cluster_name) controller${j}.$(cluster_name)\n"
+    add_to_etc_hosts "$(calc_ip_addr $mac)" "controller.$(cluster_name)"
+    let j+=1
   done
   for mac in ${MAC_ADDRESS_LIST[*]}; do
-    ip_address="$(calc_ip_addr ${ip_addr_suffix})"
+    ip_address="$(calc_ip_addr $mac)"
     id="${name}${count}.$(cluster_name)"
     add_to_etc_hosts "${ip_address}" "${id}"
     if [ "$name" = "controller" ]; then
@@ -422,7 +443,6 @@ function gen_cluster_vars() {
       name="worker"
     fi
     let count+=1
-    let ip_addr_suffix+=1
   done
   controller_macs+="]"
   worker_macs+="]"
@@ -444,7 +464,7 @@ function gen_cluster_vars() {
     echo 'kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]' >> lokocfg.vars
     echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm debian sh -c 'apt update && apt install -y ipmitool && ipmitool chassis bootdev disk options=persistent'\"" >> lokocfg.vars
     local mapping=""
-    for i in $(seq 0 $((${CONTROLLER_AMOUNT} + ${WORKER_AMOUNT} - 1))); do
+    for i in $(seq 0 $((${#MAC_ADDRESS_LIST[*]} - 1))); do
       mapping+="      ${MAC_ADDRESS_LIST[i]})
         bmcmac=${BMC_MAC_ADDRESS_LIST[i]}
         bmcipaddr=""
