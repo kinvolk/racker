@@ -173,12 +173,13 @@ function create_certs() {
   [ -z "$name" ] && exit 1
   local server_dir=~/"lokoctl-assets/${name}/matchbox/certs"
   local cert_dir="$(get_client_cert_dir)"
-  pushd "$SCRIPTFOLDER/scripts/tls" 1>/dev/null
+  tmp_dir=$(mktemp -d -t certs-XXXXXXXXXX)
+  pushd "$tmp_dir" 1>/dev/null
 
   echo "Generating certificates. Check scripts/tls/cert-gen.log for details"
 
   export SAN="IP.1:$(get_matchbox_ip_addr)"
-  ./cert-gen
+  "$SCRIPTFOLDER/scripts/tls/cert-gen"
 
   mkdir -p "${server_dir}"
   cp server.key server.crt ca.crt "${server_dir}"
@@ -186,6 +187,7 @@ function create_certs() {
   cp ca.crt client.key client.crt "${cert_dir}"
 
   popd 1>/dev/null
+  rm -rf "$tmp_dir"
 }
 
 function create_ssh_key() {
