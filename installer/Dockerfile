@@ -1,6 +1,8 @@
 ARG BASE_IMAGE=debian:stable-slim
 FROM $BASE_IMAGE as racker-build
 
+ARG RACKER_VERSION=
+
 RUN apt-get update
 RUN apt-get -y install arp-scan ipmitool
 
@@ -12,5 +14,6 @@ ENV RACKER_DIR=/racker
 RUN mkdir -p $RACKER_DIR/
 COPY --chown=1000:1000 $RACKER_TARBALL $RACKER_DIR/
 
+RUN echo $RACKER_VERSION > $RACKER_DIR/RACKER_VERSION
 
 CMD echo $RACKER_DIR

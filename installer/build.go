@@ -53,6 +53,7 @@ type Module struct {
 }
 
 type InstallerConf struct {
+	Version string `yaml:",omitempty"`
 	Modules []Module
 }
 
@@ -286,8 +287,18 @@ func build(data InstallerConf) error {
 	return nil
 }
 
-func buildImage() {
-	cmd := exec.Command("docker", "build", "-t", "racker:latest", "-f", "./Dockerfile", ".")
+func buildImage(conf InstallerConf) {
+	tag := "latest"
+	versionArg := "RACKER_VERSION="
+
+	if conf.Version != "" {
+		tag = conf.Version
+		versionArg += tag
+	}
+
+	imageName := fmt.Sprintf("racker:%v", tag)
+
+	cmd := exec.Command("docker", "build", "-t", imageName, "--build-arg", versionArg, "-f", "./Dockerfile", ".")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
