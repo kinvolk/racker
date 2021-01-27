@@ -53,6 +53,7 @@ type Module struct {
 }
 
 type InstallerConf struct {
+	Version string `yaml:",omitempty"`
 	Modules []Module
 }
 
@@ -266,14 +267,6 @@ func build(data InstallerConf) error {
 		runBuildCommands(moduleDir, module)
 	}
 
-	// Add the run.sh file
-	entryScript, err := filepath.Abs("./run.sh")
-	if err != nil {
-		return err
-	}
-
-	copyFileOrDir(entryScript, path.Join(dir, "run.sh"))
-
 	cmd := exec.Command("tar", "-C", dir, "-cvzf", InstallerTarball, ".")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -286,8 +279,18 @@ func build(data InstallerConf) error {
 	return nil
 }
 
-func buildImage() {
-	cmd := exec.Command("docker", "build", "-t", "racker:latest", "-f", "./Dockerfile", ".")
+func buildImage(conf InstallerConf) {
+	tag := "latest"
+	versionArg := "RACKER_VERSION="
+
+	if conf.Version != "" {
+		tag = conf.Version
+		versionArg += tag
+	}
+
+	imageName := fmt.Sprintf("racker:%v", tag)
+
+	cmd := exec.Command("docker", "build", "-t", imageName, "--build-arg", versionArg, "-f", "./Dockerfile", ".")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -344,6 +347,6 @@ func main() {
 			log.Fatalf("error: The file %v does not exist!", InstallerTarball)
 		}
 
-		buildImage()
+		buildImage(t)
 	}
 }

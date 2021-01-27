@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# TODO: make this fail-safe
+
+if [ "$1" = "" ]; then
+  echo "Usage: $0 COMMAND"
+  echo "Comamnds:"
+  echo "  bootstrap ...: guided setup for Lokomotive Kubernetes"
+  echo "  update: install updates for the current racker version"
+  echo "  upgrade: migrate to a newer racker version"
+  echo "  get VERSION: install a particular racker version"
+  echo "  factory: preparation procedure to configure the hardware"
+  exit 1
+elif [ "$1" = update ]; then
+  VERSION=$(cat /opt/racker/RACKER_VERSION)
+  IMAGE="quay.io/kinvolk/racker:$VERSION"
+  sudo docker pull "$IMAGE"
+  sudo docker run --rm --privileged --pid host "$IMAGE"
+elif [ "$1" = upgrade ]; then
+  IMAGE="quay.io/kinvolk/racker:latest"
+  sudo docker pull "$IMAGE"
+  sudo docker run --rm --privileged --pid host "$IMAGE"
+elif [ "$1" = get ]; then
+  VERSION="$2"
+  IMAGE="quay.io/kinvolk/racker:$VERSION"
+  sudo docker pull "$IMAGE"
+  sudo docker run --rm --privileged --pid host "$IMAGE"
+elif [ "$1" = factory ]; then
+  # TODO: guide through /usr/share/oem/ metadata setup
+  # Delete the version flag file to force an update on the first run
+  sudo rm /opt/racker/RACKER_VERSION
+elif [ "$1" = bootstrap ]; then
+  if [ ! -f /opt/racker/RACKER_VERSION ]; then
+    echo "Initial run, updating to the latest version"
+    exec sh -c "racker upgrade && racker bootstrap"
+  fi
+  # actually run the setup wizard here
+  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red /opt/racker/bootstrap/prepare.sh create
+fi

@@ -1,6 +1,9 @@
+version: 0.6
 modules:
   - name: .
     assets:
+    - type: file
+      path: ./racker
     - type: file
       path: ../bootstrap
     - type: file
@@ -11,4 +14,4 @@ modules:
       url: https://github.com/kinvolk/lokomotive.git
       branch: "kai/baremetal"
     build-commands:
-    - mkdir bin && unzip terraform.zip -d bin/ && rm terraform.zip && cd lokomotive && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive
+    - mkdir bin && mv racker bin/ && unzip terraform.zip -d bin/ && rm terraform.zip && cd lokomotive && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive
