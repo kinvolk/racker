@@ -297,14 +297,27 @@ func buildImage() {
 	}
 }
 
+func buildRunnerImage() {
+	cmd := exec.Command("docker", "build", "-t", "racker-runner:latest", "-f", "Dockerfile", ".")
+	cmd.Dir = "./racker-runner"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to create racker-runner image: %v", err)
+	}
+}
+
 func main() {
 	forceBuild := flag.Bool("force", false, "build even if there's already a tarball")
-	onlyBuild := flag.String("only", "", "build only these options: tarball or image")
+	onlyBuild := flag.String("only", "", "build only these options: tarball, image, or runner")
 	confFilePath := flag.String("config", "./conf.yaml", "path to the configuration file")
 	flag.Parse()
 
 	buildTarball := *onlyBuild == "" || *onlyBuild == "tarball"
 	buildImg := *onlyBuild == "" || *onlyBuild == "image"
+	buildRunner := *onlyBuild == "" || *onlyBuild == "runner"
 
 	t := InstallerConf{}
 
@@ -329,8 +342,8 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
-	if !buildTarball && !buildImg {
-		log.Fatal("error: '-only' option not recognized, please use tarball or image.")
+	if !buildTarball && !buildImg && !buildRunner {
+		log.Fatal("error: '-only' option not recognized, please use tarball, image, or runner.")
 	}
 
 	if buildTarball {
@@ -344,6 +357,10 @@ func main() {
 			log.Fatalf("error: The file %v does not exist!", InstallerTarball)
 		}
 
-		buildImage()
+		buildImage(t)
+	}
+
+	if buildRunner {
+		buildRunnerImage()
 	}
 }

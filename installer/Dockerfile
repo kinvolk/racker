@@ -12,6 +12,5 @@ ENV RACKER_DIR=/racker
 RUN mkdir -p $RACKER_DIR/
 COPY --chown=1000:1000 $RACKER_TARBALL $RACKER_DIR/
 
-ADD --chown=1000:1000 ./racker-run.sh $RACKER_DIR/
 
-CMD cat $RACKER_DIR/racker-run.sh
+CMD echo $RACKER_DIR
