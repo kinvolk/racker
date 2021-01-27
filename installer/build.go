@@ -247,6 +247,10 @@ func build(data InstallerConf) error {
 
 	defer os.RemoveAll(dir)
 
+	if err := os.Chmod(dir, 0755); err != nil {
+		return err
+	}
+
 	for _, module := range data.Modules {
 		moduleDir, err := filepath.Abs(path.Join(dir, module.Name))
 		if err != nil {

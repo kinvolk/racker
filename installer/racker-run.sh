@@ -1,14 +1,15 @@
-#/bin/sh -e
+#/bin/sh
 
+set -eu
 # Setup the installer
-INSTALLER_DIR="$HOME/racker/"
-mkdir -p $INSTALLER_DIR
+INSTALLER_DIR="/opt/racker"
+sudo mkdir -p $INSTALLER_DIR
 
-rm -rf $INSTALLER_DIR/*
+sudo rm -rf $INSTALLER_DIR/*
 
 MOUNT_POINT=/racker-ext
 
-docker run -it -v $INSTALLER_DIR:$MOUNT_POINT:Z racker:latest tar -C "$MOUNT_POINT" -xzf /racker/racker.tar.gz
+docker run --rm -v $INSTALLER_DIR:$MOUNT_POINT:Z quay.io/kinvolk/racker:kai_bootstrap-fixes tar --no-same-owner -C "$MOUNT_POINT" -xzf /racker/racker.tar.gz
 
 # Run the installer
 pushd $INSTALLER_DIR > /dev/null
