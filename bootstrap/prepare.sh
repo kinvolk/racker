@@ -420,9 +420,11 @@ function gen_cluster_vars() {
   local controller_hosts=""
   local id=""
   local j=1
+  sudo sed -i "/.*controller.$(cluster_name)/d" /etc/hosts
   for mac in ${CONTROLLERS_MAC[*]}; do
     controller_hosts+="          $(calc_ip_addr $mac) controller.$(cluster_name) controller${j}.$(cluster_name)\n"
-    add_to_etc_hosts "$(calc_ip_addr $mac)" "controller.$(cluster_name)"
+    # special case not covered by add_to_etc_hosts function
+    echo "$(calc_ip_addr $mac)" "controller.$(cluster_name)" | sudo tee -a /etc/hosts
     let j+=1
   done
   for mac in ${MAC_ADDRESS_LIST[*]}; do
