@@ -10,8 +10,16 @@ modules:
       url: https://releases.hashicorp.com/terraform/0.13.6/terraform_0.13.6_linux_amd64.zip
       sha256: 55f2db00b05675026be9c898bdd3e8230ff0c5c78dd12d743ca38032092abfc9
       dest-filename: terraform.zip
+    - type: file
+      url: https://dl.k8s.io/release/v1.20.2/bin/linux/amd64/kubectl
+      sha256: 2583b1c9fbfc5443a722fb04cf0cc83df18e45880a2cf1f6b52d9f595c5beb88
+      dest-filename: kubectl
     - type: git
       url: https://github.com/kinvolk/lokomotive.git
       branch: "kai/baremetal"
     build-commands:
-    - mkdir bin && mv racker bin/ && unzip terraform.zip -d bin/ && rm terraform.zip && cd lokomotive && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive
+    - mkdir bin
+    - mv racker bin/
+    - unzip terraform.zip -d bin/ && rm terraform.zip
+    - mv kubectl bin/ && chmod +x bin/kubectl
+    - cd lokomotive && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive

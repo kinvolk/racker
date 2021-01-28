@@ -537,6 +537,10 @@ if [ "$1" = create ]; then
 
   lokoctl cluster apply --verbose --skip-components
   lokoctl component apply
+  if [ -z "$USE_QEMU" ]; then
+    echo "Setting up ~/.kube/config symlink for kubectl"
+    ln -fs ~/"lokoctl-assets/$(cluster_name)/cluster-assets/auth/kubeconfig" ~/.kube/config
+  fi
   echo "Now you can directly change the baremetal.lokocfg config and run: lokoctl cluster|component apply, this script here is not needed anymore"
 else
   if [ -n "$USE_QEMU" ]; then
