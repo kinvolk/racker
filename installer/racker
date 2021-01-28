@@ -35,6 +35,7 @@ usage() {
     ["upgrade"]="migrate to a newer racker version"
     ["get VERSION"]="install a particular racker version"
     ["factory"]="preparation procedure to configure the hardware"
+    ["version"]="print racker version"
     ["-h/--help"]="show usage"
   )
 
@@ -79,6 +80,8 @@ elif [ "$1" = upgrade ]; then
 elif [ "$1" = get ]; then
   VERSION=${2:-$VERSION}
   pull_n_run_racker $IMAGE $VERSION
+elif [ "$1" = version ]; then
+  echo $VERSION
 elif [ "$1" = factory ]; then
   # TODO: guide through /usr/share/oem/ metadata setup
   # Delete the version flag file to force an update on the first run
