@@ -1,39 +1,101 @@
 #!/bin/bash
 
-# TODO: make this fail-safe
+set -eu
+
+IMAGE=${RACKER_IMAGE:-"quay.io/kinvolk/racker"}
+VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || echo "latest")
+
+run_racker() {
+  VERSION=${2:-"latest"}
+  IMAGE="$1:$VERSION"
+
+  echo "Running $IMAGE"
+
+  sudo docker run --rm --privileged --pid host "$IMAGE"
+}
+
+pull_image() {
+  VERSION=${2:-"latest"}
+  IMAGE="$1:$VERSION"
+
+  echo "Getting $IMAGE"
+
+  sudo docker pull "$IMAGE"
+}
+
+pull_n_run_racker() {
+  pull_image $1 $2
+  run_racker $1 $2
+}
+
+usage() {
+  declare -A args=(
+    ["bootstrap ..."]="guided setup for Lokomotive Kubernetes"
+    ["update"]="install updates for the current racker version"
+    ["upgrade"]="migrate to a newer racker version"
+    ["get VERSION"]="install a particular racker version"
+    ["factory"]="preparation procedure to configure the hardware"
+    ["version"]="print racker version"
+    ["-h/--help"]="show usage"
+  )
+
+  echo "Usage: $0 COMMAND"
+  echo "Commands:"
+  for arg in "${!args[@]}"; do
+    printf " %-20s: " "$arg"
+    echo ${args["$arg"]}
+  done
+  exit 1
+}
+
+ARGS=$(getopt -n "$0" -o h -l help -- "$@")
+eval set -- "$ARGS"
+
+while true; do
+  case "${1:-}" in
+    -h|--help)
+      usage
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      echo "error: Unrecognized option \"$1\"" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ $# -lt 1 ]; then
+    usage
+fi
 
 if [ "$1" = "" ]; then
-  echo "Usage: $0 COMMAND"
-  echo "Comamnds:"
-  echo "  bootstrap ...: guided setup for Lokomotive Kubernetes"
-  echo "  update: install updates for the current racker version"
-  echo "  upgrade: migrate to a newer racker version"
-  echo "  get VERSION: install a particular racker version"
-  echo "  factory: preparation procedure to configure the hardware"
-  exit 1
+  usage
 elif [ "$1" = update ]; then
-  VERSION=$(cat /opt/racker/RACKER_VERSION)
-  IMAGE="quay.io/kinvolk/racker:$VERSION"
-  sudo docker pull "$IMAGE"
-  sudo docker run --rm --privileged --pid host "$IMAGE"
+  pull_n_run_racker $IMAGE $VERSION
 elif [ "$1" = upgrade ]; then
-  IMAGE="quay.io/kinvolk/racker:latest"
-  sudo docker pull "$IMAGE"
-  sudo docker run --rm --privileged --pid host "$IMAGE"
+  pull_n_run_racker $IMAGE "latest"
 elif [ "$1" = get ]; then
-  VERSION="$2"
-  IMAGE="quay.io/kinvolk/racker:$VERSION"
-  sudo docker pull "$IMAGE"
-  sudo docker run --rm --privileged --pid host "$IMAGE"
+  VERSION=${2:-$VERSION}
+  pull_n_run_racker $IMAGE $VERSION
+elif [ "$1" = version ]; then
+  echo $VERSION
 elif [ "$1" = factory ]; then
   # TODO: guide through /usr/share/oem/ metadata setup
   # Delete the version flag file to force an update on the first run
-  sudo rm /opt/racker/RACKER_VERSION
+  sudo rm -f /opt/racker/RACKER_VERSION
 elif [ "$1" = bootstrap ]; then
   if [ ! -f /opt/racker/RACKER_VERSION ]; then
     echo "Initial run, updating to the latest version"
-    exec sh -c "racker upgrade && racker bootstrap"
+    pull_image $IMAGE $VERSION
+    exec sh -c "racker bootstrap"
   fi
   # actually run the setup wizard here
   USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red /opt/racker/bootstrap/prepare.sh create
+else
+  echo "Error: Unrecognized option \"$1\"" >&2
+  echo
+  usage
 fi
