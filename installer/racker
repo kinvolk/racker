@@ -95,7 +95,7 @@ elif [ "$1" = bootstrap ]; then
   # actually run the setup wizard here
   mkdir ~/lokomotive || { echo "a Lokomotive configuration already exists, remove the $HOME/lokomotive folder first"; exit 1 ; }
   cd ~/lokomotive
-  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red /opt/racker/bootstrap/prepare.sh create
+  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red CLUSTER_NAME=firebox /opt/racker/bootstrap/prepare.sh create
 else
   echo "Error: Unrecognized option \"$1\"" >&2
   echo

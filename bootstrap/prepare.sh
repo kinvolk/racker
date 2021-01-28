@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
+CLUSTER_DIR="$PWD"
+ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
 CONTROLLER_TYPE=${CONTROLLER_TYPE:-""} # an empty string means any node type
 SUBNET_PREFIX=${SUBNET_PREFIX:-"172.24.213"}
@@ -11,7 +14,7 @@ if [ "$USE_QEMU" = "0" ]; then
 fi
 
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-  echo "Usage: USE_QEMU=1 $0 create|destroy"
+  echo "Usage: USE_QEMU=0|1 $0 create|destroy"
   echo "Note: Make sure you disable any firewall for DHCP on the bridge, e.g. on Fedora, run sudo systemctl disable --now firewalld"
   exit 1
 fi
@@ -44,6 +47,7 @@ if [ -n "$USE_QEMU" ]; then
   CONTROLLERS_MAC=($(cat controller_macs))
   MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
   FULL_MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
+  PXE_INTERFACE="pxe0"
 else
   ls /usr/share/oem/nodes.csv > /dev/null || { echo "The rack metadata file in /usr/share/oem/nodes.csv is missing" ; exit 1 ; }
   ls /usr/share/oem/ipmi_user /usr/share/oem/ipmi_password > /dev/null || { echo "The IPMI user and the IPMI password files /usr/share/oem/ipmi_user and /usr/share/oem/ipmi_password are missing" ; exit 1 ; }
@@ -98,27 +102,6 @@ if [ -n "$USE_QEMU" ]; then
   EXTERNAL_DHCP_ROUTER_OPTION="${EXTERNAL_BRIDGE_ADDRESS}"
 fi
 
-function get_matchbox_interface() {
-  if [ -n "$USE_QEMU" ]; then
-    echo "pxe0"
-  else
-    echo "${PXE_INTERFACE}"
-  fi
-}
-
-# idea: pick a stable cluster name from a wordlist, based on the MAC addr of the mgmt node
-function cluster_name() {
-  shuf -n 1 --random-source=/sys/class/net/"$(get_matchbox_interface)"/address "$SCRIPTFOLDER/wordlist.txt"
-}
-
-function get_client_cert_dir() {
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
-  local p=~/"lokoctl-assets/${name}/.matchbox/"
-  mkdir -p "$p"
-  echo "$p"
-}
-
 # Use a private /24 subnet on an internal L2 network, part of 172.16.0.0/12 and assign the node number to the last byte, start with .2 for the first node (the management node is always .1).
 # Purpose is DHCP/PXE but also stable addressing of the nodes.
 function calc_ip_addr() {
@@ -164,7 +147,6 @@ function create_network() {
 
     sudo ip link add name "${INTERNAL_BRIDGE_NAME}" address aa:bb:cc:dd:ee:ff type bridge
     sudo ip link set "${INTERNAL_BRIDGE_NAME}" up
-    # Use a stable MAC address because it's also the matchbox interface, and we want to calculate a cluster name from it # TODO: if a mode is added to create a mgmt VM, create the VM with that MAC
     sudo ip addr add dev "${INTERNAL_BRIDGE_NAME}" "${INTERNAL_BRIDGE_ADDRESS}/${INTERNAL_BRIDGE_SIZE}" broadcast "${INTERNAL_BRIDGE_BROADCAST}"
 
     # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway)
@@ -174,7 +156,7 @@ function create_network() {
   else
     sudo tee /etc/systemd/network/10-pxe.network <<-EOF
 	[Match]
-	Name=$(get_matchbox_interface)
+	Name=${PXE_INTERFACE}
 	[Link]
 	RequiredForOnline=no
 	[Address]
@@ -189,10 +171,8 @@ EOF
 }
 
 function create_certs() {
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
-  local server_dir=~/"lokoctl-assets/${name}/matchbox/certs"
-  local cert_dir="$(get_client_cert_dir)"
+  local server_dir="/opt/racker-state/matchbox/certs"
+  local cert_dir="/opt/racker-state/matchbox-client"
   tmp_dir=$(mktemp -d -t certs-XXXXXXXXXX)
   pushd "$tmp_dir" 1>/dev/null
 
@@ -201,9 +181,12 @@ function create_certs() {
   export SAN="IP.1:$(get_matchbox_ip_addr)"
   "$SCRIPTFOLDER/scripts/tls/cert-gen"
 
-  mkdir -p "${server_dir}"
+  sudo mkdir -p "${server_dir}"
+  sudo chown -R $USER:$USER "${server_dir}"
   cp server.key server.crt ca.crt "${server_dir}"
 
+  sudo mkdir -p "${cert_dir}"
+  sudo chown -R $USER:$USER "${cert_dir}"
   cp ca.crt client.key client.crt "${cert_dir}"
 
   popd 1>/dev/null
@@ -217,10 +200,9 @@ function create_ssh_key() {
 }
 
 function get_assets() {
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
-  local DOWNLOAD_DIR=~/"lokoctl-assets/${name}/matchbox/assets"
-  mkdir -p "${DOWNLOAD_DIR}"
+  local DOWNLOAD_DIR="/opt/racker-state/matchbox/assets"
+  sudo mkdir -p "${DOWNLOAD_DIR}"
+  sudo chown -R $USER:$USER "${DOWNLOAD_DIR}"
 
   local FLATCAR_VERSION_FILE="${DOWNLOAD_DIR}/flatcar/current/version.txt"
 
@@ -258,47 +240,41 @@ function destroy_containers() {
 
 # DHCP/PXE on the internal bridge
 function prepare_dnsmasq_conf() {
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
-
-  mkdir -p ~/"lokoctl-assets/${name}/dnsmasq"
+  sudo mkdir -p "/opt/racker-state/dnsmasq"
+  sudo chown -R $USER:$USER "/opt/racker-state/dnsmasq"
   sed \
     -e "s/{{DHCP_RANGE_LOW}}/$INTERNAL_DHCP_RANGE_LOW/g" \
     -e "s/{{DHCP_RANGE_HIGH}}/$INTERNAL_DHCP_RANGE_HIGH/g" \
     -e "s/{{DHCP_NETMASK}}/$INTERNAL_DHCP_NETMASK/g" \
-    -e "s/{{BRIDGE_NAME}}/$(get_matchbox_interface)/g" \
+    -e "s/{{BRIDGE_NAME}}/${PXE_INTERFACE}/g" \
     -e "s/{{MATCHBOX}}/$(get_matchbox_ip_addr)/g" \
-    < "$SCRIPTFOLDER/dnsmasq.conf.template" > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq.conf"
+    < "$SCRIPTFOLDER/dnsmasq.conf.template" > "/opt/racker-state/dnsmasq/dnsmasq.conf"
 }
 
 # regular DHCP on the external bridge (as libvirt would do)
 function prepare_dnsmasq_external_conf() {
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
-
-  mkdir -p ~/"lokoctl-assets/${name}/dnsmasq"
+  sudo mkdir -p "/opt/racker-state/dnsmasq"
+  sudo chown -R $USER:$USER "/opt/racker-state/dnsmasq"
   sed \
     -e "s/{{DHCP_RANGE_LOW}}/$EXTERNAL_DHCP_RANGE_LOW/g" \
     -e "s/{{DHCP_RANGE_HIGH}}/$EXTERNAL_DHCP_RANGE_HIGH/g" \
     -e "s/{{DHCP_ROUTER_OPTION}}/$EXTERNAL_DHCP_ROUTER_OPTION/g" \
     -e "s/{{DHCP_NETMASK}}/$EXTERNAL_DHCP_NETMASK/g" \
     -e "s/{{BRIDGE_NAME}}/$EXTERNAL_BRIDGE_NAME/g" \
-    < "$SCRIPTFOLDER/dnsmasq-external.conf.template" > ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf"
+    < "$SCRIPTFOLDER/dnsmasq-external.conf.template" > "/opt/racker-state/dnsmasq/dnsmasq-external.conf"
 }
 
 function create_containers() {
   destroy_containers
-  local name="$(cluster_name)"
-  [ -z "$name" ] && exit 1
 
-  mkdir -p ~/"lokoctl-assets/${name}/matchbox/groups"
+  sudo mkdir -p "/opt/racker-state/matchbox/groups"
   MATCHBOX_CMD="docker run --name matchbox \
     -d \
     --net=host \
-    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/certs:/etc/matchbox:Z \
-    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/assets:/var/lib/matchbox/assets:Z \
-    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox:/var/lib/matchbox \
-    -v $HOME/lokoctl-assets/$(cluster_name)/matchbox/groups:/var/lib/matchbox/groups \
+    -v /opt/racker-state/matchbox/certs:/etc/matchbox:Z \
+    -v /opt/racker-state/matchbox/assets:/var/lib/matchbox/assets:Z \
+    -v /opt/racker-state/matchbox:/var/lib/matchbox \
+    -v /opt/racker-state/matchbox/groups:/var/lib/matchbox/groups \
     quay.io/coreos/matchbox:v0.7.0 -address=$(get_matchbox_ip_addr):8080 \
     -log-level=debug -rpc-address=$(get_matchbox_ip_addr):8081"
   if [ -n "$USE_QEMU" ]; then
@@ -331,7 +307,7 @@ EOF
   DNSMASQ_CMD="docker run --name dnsmasq \
     -d \
     --cap-add=NET_ADMIN \
-    -v $HOME/lokoctl-assets/${name}/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z \
+    -v /opt/racker-state/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z \
     --net=host \
     quay.io/coreos/dnsmasq:v0.5.0 -d"
   if [ -n "$USE_QEMU" ]; then
@@ -365,7 +341,7 @@ EOF
   sudo docker run --name dnsmasq-external \
     -d \
     --cap-add=NET_ADMIN \
-    -v ~/"lokoctl-assets/${name}/dnsmasq/dnsmasq-external.conf:/etc/dnsmasq.conf:Z" \
+    -v "/opt/racker-state/dnsmasq/dnsmasq-external.conf:/etc/dnsmasq.conf:Z" \
     --net=host \
     quay.io/coreos/dnsmasq:v0.5.0 -d
   fi
@@ -375,21 +351,21 @@ function destroy_nodes() {
   if [ -n "$USE_QEMU" ]; then
   echo "Destroying nodes..."
   for count in $(seq 1 $CONTROLLER_AMOUNT); do
-    sudo virsh destroy "controller${count}.$(cluster_name)" || true
-    sudo virsh undefine "controller${count}.$(cluster_name)" || true
+    sudo virsh destroy "controller${count}.${CLUSTER_NAME}" || true
+    sudo virsh undefine "controller${count}.${CLUSTER_NAME}" || true
   done
   for count in $(seq 1 $WORKER_AMOUNT); do
-    sudo virsh destroy "worker${count}.$(cluster_name)" || true
-    sudo virsh undefine "worker${count}.$(cluster_name)" || true
+    sudo virsh destroy "worker${count}.${CLUSTER_NAME}" || true
+    sudo virsh undefine "worker${count}.${CLUSTER_NAME}" || true
   done
 
   sudo virsh pool-refresh default
 
   for count in $(seq 1 $CONTROLLER_AMOUNT); do
-    sudo virsh vol-delete --pool default "controller${count}.$(cluster_name).qcow2" || true
+    sudo virsh vol-delete --pool default "controller${count}.${CLUSTER_NAME}.qcow2" || true
   done
   for count in $(seq 1 $WORKER_AMOUNT); do
-    sudo virsh vol-delete --pool default "worker${count}.$(cluster_name).qcow2" || true
+    sudo virsh vol-delete --pool default "worker${count}.${CLUSTER_NAME}.qcow2" || true
   done
   fi
 }
@@ -420,16 +396,16 @@ function gen_cluster_vars() {
   local controller_hosts=""
   local id=""
   local j=1
-  sudo sed -i "/.*controller.$(cluster_name)/d" /etc/hosts
+  sudo sed -i "/.*controller.${CLUSTER_NAME}/d" /etc/hosts
   for mac in ${CONTROLLERS_MAC[*]}; do
-    controller_hosts+="          $(calc_ip_addr $mac) controller.$(cluster_name) controller${j}.$(cluster_name)\n"
+    controller_hosts+="          $(calc_ip_addr $mac) controller.${CLUSTER_NAME} controller${j}.${CLUSTER_NAME}\n"
     # special case not covered by add_to_etc_hosts function
-    echo "$(calc_ip_addr $mac)" "controller.$(cluster_name)" | sudo tee -a /etc/hosts
+    echo "$(calc_ip_addr $mac)" "controller.${CLUSTER_NAME}" | sudo tee -a /etc/hosts
     let j+=1
   done
   for mac in ${MAC_ADDRESS_LIST[*]}; do
     ip_address="$(calc_ip_addr $mac)"
-    id="${name}${count}.$(cluster_name)"
+    id="${name}${count}.${CLUSTER_NAME}"
     add_to_etc_hosts "${ip_address}" "${id}"
     if [ "$name" = "controller" ]; then
       controller_macs+="\"${mac}\", "
@@ -451,7 +427,8 @@ function gen_cluster_vars() {
   controller_names+="]"
   worker_names+="]"
   clc_snippets+=$'\n'"}"
-  echo "cluster_name = \"$(cluster_name)\"" > lokocfg.vars
+  echo "cluster_name = \"${CLUSTER_NAME}\"" > lokocfg.vars
+  echo "asset_dir = \"${ASSET_DIR}\"" >> lokocfg.vars
   echo "controller_macs = ${controller_macs}" >> lokocfg.vars
   echo "worker_macs = ${worker_macs}" >> lokocfg.vars
   echo "controller_names = ${controller_names}" >> lokocfg.vars
@@ -476,7 +453,7 @@ function gen_cluster_vars() {
           count=\$((count - 1))
           sleep 1
           if [ \"\$bmcipaddr\" = \"\" ]; then
-            bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface $(get_matchbox_interface) | grep -m 1 \$bmcmac | cut -f 1\")
+            bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1\")
           fi
           if [ \"\$bmcipaddr\" = \"\" ]; then
             continue
@@ -521,8 +498,8 @@ EOF
 
 if [ "$1" = create ]; then
   create_network
-  rm -rf ~/"lokoctl-assets/$(cluster_name)/matchbox/groups/"*
-  rm -rf ~/"lokoctl-assets/$(cluster_name)/terraform" ~/"lokoctl-assets/$(cluster_name)/terraform-modules"  ~/"lokoctl-assets/$(cluster_name)/cluster-assets"
+  sudo rm -rf "/opt/racker-state/matchbox/groups/"*
+  rm -rf "${ASSET_DIR}/terraform" "${ASSET_DIR}/terraform-modules"  "${ASSET_DIR}/cluster-assets"
   get_assets
   create_certs
   create_ssh_key
