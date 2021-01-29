@@ -27,11 +27,7 @@ defined in the `./installer/conf.yaml` file.
 
 First compile the installer creator:
 
-`make installer`
-
-Then run the `build` tool (be sure to check out its options):
-
-`cd ./installer && ./build`
+`make all`
 
 Now push the resulting image.
 
