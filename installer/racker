@@ -89,7 +89,7 @@ elif [ "$1" = factory ]; then
 elif [ "$1" = bootstrap ]; then
   if [ ! -f /opt/racker/RACKER_VERSION ]; then
     echo "Initial run, updating to the latest version"
-    pull_image $IMAGE $VERSION
+    pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
   # actually run the setup wizard here
