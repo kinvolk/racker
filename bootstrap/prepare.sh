@@ -268,6 +268,7 @@ function create_containers() {
   destroy_containers
 
   sudo mkdir -p "/opt/racker-state/matchbox/groups"
+  sudo chown -R $USER:$USER "/opt/racker-state/matchbox"
   MATCHBOX_CMD="docker run --name matchbox \
     -d \
     --net=host \
