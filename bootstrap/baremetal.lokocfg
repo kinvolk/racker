@@ -1,10 +1,10 @@
 cluster "bare-metal" {
-  asset_dir                 = pathexpand("~/lokoctl-assets/${var.cluster_name}")
+  asset_dir                 = var.asset_dir
   ssh_pubkeys               = [file(pathexpand("~/.ssh/id_rsa.pub"))]
   cached_install            = "true"
-  matchbox_ca_path          = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/ca.crt")
-  matchbox_client_cert_path = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/client.crt")
-  matchbox_client_key_path  = pathexpand("~/lokoctl-assets/${var.cluster_name}/.matchbox/client.key")
+  matchbox_ca_path          = pathexpand("/opt/racker-state/matchbox-client/ca.crt")
+  matchbox_client_cert_path = pathexpand("/opt/racker-state/matchbox-client/client.crt")
+  matchbox_client_key_path  = pathexpand("/opt/racker-state/matchbox-client/client.key")
   matchbox_endpoint         = "${var.matchbox_addr}:8081"
   matchbox_http_endpoint    = "http://${var.matchbox_addr}:8080"
   cluster_name              = var.cluster_name
@@ -41,6 +41,10 @@ component "flatcar-linux-update-operator" {}
 
 
 variable "cluster_name" {
+  type = "string"
+}
+
+variable "asset_dir" {
   type = "string"
 }
 
