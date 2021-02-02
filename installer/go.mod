@@ -3,9 +3,9 @@ module kinvolk/racker/installer/v1
 go 1.15
 
 require (
-	github.com/go-git/go-git v4.7.0+incompatible
-	github.com/go-git/go-git/v5 v5.2.0
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.4.1
-	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect
+	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )

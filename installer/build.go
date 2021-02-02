@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
-
 	"gopkg.in/yaml.v2"
 )
 
