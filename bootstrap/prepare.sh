@@ -8,6 +8,10 @@ ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
 CONTROLLER_TYPE=${CONTROLLER_TYPE:-""} # an empty string means any node type
 SUBNET_PREFIX=${SUBNET_PREFIX:-"172.24.213"}
+RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
+if [ "${RACKER_VERSION}" = "" ]; then
+  RACKER_VERSION="latest"
+fi
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
@@ -442,7 +446,7 @@ function gen_cluster_vars() {
     echo "pxe_commands = \"sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network\"" >> lokocfg.vars
   else
     echo 'kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]' >> lokocfg.vars
-    echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm debian sh -c 'apt update && apt install -y ipmitool && ipmitool chassis bootdev disk options=persistent'\"" >> lokocfg.vars
+    echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool chassis bootdev disk options=persistent\"" >> lokocfg.vars
     local mapping=""
     for i in $(seq 0 $((${#MAC_ADDRESS_LIST[*]} - 1))); do
       mapping+="      ${MAC_ADDRESS_LIST[i]})
@@ -454,21 +458,21 @@ function gen_cluster_vars() {
           count=\$((count - 1))
           sleep 1
           if [ \"\$bmcipaddr\" = \"\" ]; then
-            bmcipaddr=\$(docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y arp-scan > /dev/null && arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1\")
+            bmcipaddr=\$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c \"arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1\")
           fi
           if [ \"\$bmcipaddr\" = \"\" ]; then
             continue
           fi
           if [ \"\$step\" = poweroff ]; then
-            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off\" || continue
+            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
             step=bootdev
             continue
           elif [ \"\$step\" = bootdev ]; then
-            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe\" || continue
+            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe || continue
             step=poweron
             continue
           else
-            docker run --privileged --net host --rm debian sh -c \"apt update > /dev/null && apt install -y ipmitool > /dev/null && ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on\" || continue
+            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on || continue
             break
           fi
           break # not reached
