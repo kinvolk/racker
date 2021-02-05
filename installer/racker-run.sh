@@ -26,5 +26,6 @@ nsenter -a -t 1 ln -fs /opt/racker/bin/racker /opt/bin/racker
 nsenter -a -t 1 ln -fs /opt/racker/bin/lokoctl /opt/bin/lokoctl
 nsenter -a -t 1 ln -fs /opt/racker/bin/terraform /opt/bin/terraform
 nsenter -a -t 1 ln -fs /opt/racker/bin/kubectl /opt/bin/kubectl
+nsenter -a -t 1 ln -fs /opt/racker/bootstrap/ipmi /opt/bin/ipmi
 
 echo "Installation complete, you may now run: racker"

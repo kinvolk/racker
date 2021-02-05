@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+USE_STDIN=${USE_STDIN:-"1"}
+USE_TTY=${USE_TTY:-"1"}
+if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  echo "Usage: $0 domain|primary-mac|bmc-mac [ipmitool commands]"
+  echo "If no command is given, defaults to \"sol activate\" for attaching the serial console"
+  echo "This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed"
+  exit 1
+fi
+if [ $# -gt 1 ]; then
+  CMD="${@:2}"
+else
+  CMD="sol activate"
+fi
+NODE="$1"
+if [[ "${NODE}" != *:* ]]; then
+  NODE="$(jq -r .selector.mac /opt/racker-state/matchbox/groups/install*"${NODE}".json)"
+  if [[ "${NODE}" != *:* ]]; then
+    echo "could not find MAC for $1"
+    exit 1
+  fi
+fi
+if [ "${USE_STDIN}" = 1 ] || [ "${USE_TTY}" = 1 ]; then
+  ARGS="-"
+  if [ "${USE_STDIN}" = 1 ]; then
+    ARGS+="i"
+  fi
+  if [ "${USE_TTY}" = 1 ]; then
+    ARGS+="t"
+  fi
+else
+  ARGS=""
+fi
+BMC=$(grep -m 1 "${NODE}" /usr/share/oem/nodes.csv | cut -d , -f 2) # may contain whitespace, thus check for : and don't use quoted
+if [[ "${BMC}" != *:* ]]; then
+  echo "could not find BMC MAC for $1 using ${NODE}"
+  exit 1
+fi
+PXE_INTERFACE="$(cat /usr/share/oem/pxe_interface || true)"
+if [ "${PXE_INTERFACE}" = "" ]; then
+  echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+  exit 1
+fi
+if [[ "${PXE_INTERFACE}" == *:* ]]; then
+  PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
+  if [ "${PXE_INTERFACE}" = "" ]; then
+    echo "Could not find interface name for the PXE MAC address"
+    exit 1
+  fi
+fi
+RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
+if [ "${RACKER_VERSION}" = "" ]; then
+  RACKER_VERSION="latest"
+fi
+IP_ADDR="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $BMC --interface ${PXE_INTERFACE} | grep -m 1 $BMC | cut -f 1")"
+IPMI_USER=$(cat /usr/share/oem/ipmi_user)
+IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
+if [ "${CMD}" = "sol activate" ]; then
+  echo "Opening serial console, detach with ~~. (double ~ because you need to escape the ~ when already using SSH or a serial console, with two SSH connections it would be ~~~.)"
+fi
+docker run --privileged --net host --rm ${ARGS} quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H "${IP_ADDR}" -U "${IPMI_USER}" -P "${IPMI_PASSWORD}" ${CMD}

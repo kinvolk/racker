@@ -12,6 +12,22 @@ networkd:
         [Network]
         DHCP=no
         LinkLocalAddressing=no
+systemd:
+  units:
+    - name: boot-workaround-efi-disk-persist.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Workaround to really persist the boot settings because sometimes they get lost. The raw command can be dropped once a new ipmitool version is released that fixes the first command (only one flag works in 1.8.18).
+        Requires=network-online.target
+        After=network-online.target
+        [Service]
+        Type=oneshot
+        Restart=on-failure
+        RestartSec=5s
+        ExecStart=docker run --privileged --net host --rm quay.io/kinvolk/racker:{{RACKER_VERSION}} sh -c 'ipmitool chassis bootdev disk options=persistent,efiboot && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'
+        [Install]
+        WantedBy=multi-user.target
 storage:
   files:
     - path: /etc/hosts
