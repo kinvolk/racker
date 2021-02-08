@@ -419,8 +419,9 @@ function gen_cluster_vars() {
       worker_macs+="\"${mac}\", "
       worker_names+="\"${id}\", "
     fi
-    clc_snippets+="\"${id}\" = [\"${id}.yaml\"]"$'\n'
-    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" >"${id}.yaml"
+    mkdir -p cl
+    clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\"]"$'\n'
+    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "cl/${id}.yaml"
     if [ "$name" = "controller" ] && [ "$count" = "${CONTROLLER_AMOUNT}" ]; then
       count=0
       name="worker"
