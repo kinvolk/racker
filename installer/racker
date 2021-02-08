@@ -98,7 +98,22 @@ elif [ "$1" = bootstrap ]; then
   # actually run the setup wizard here
   mkdir ~/lokomotive || { echo "a Lokomotive configuration already exists, remove the $HOME/lokomotive folder first"; exit 1 ; }
   cd ~/lokomotive
-  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red CLUSTER_NAME=firebox /opt/racker/bootstrap/prepare.sh create
+
+  LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
+  if $LOCKSMITH_ENABLED; then
+    # Stop locksmith to prevent a possible reboot while bootstrapping
+    sudo systemctl stop locksmithd
+  fi
+
+  ret=0
+  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red CLUSTER_NAME=firebox /opt/racker/bootstrap/prepare.sh create || ret=$?
+
+  # Start locksmith again, if it was enabled before
+  if $LOCKSMITH_ENABLED; then
+    sudo systemctl start locksmithd || true
+  fi
+
+  exit $ret
 else
   echo "Error: Unrecognized option \"$1\"" >&2
   echo
