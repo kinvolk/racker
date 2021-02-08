@@ -15,7 +15,6 @@ cluster "bare-metal" {
   worker_domains = var.worker_names
   worker_macs = var.worker_macs
   worker_names = var.worker_names
-  # the user may append additional custom configs to the values: { for name, value in var.clc_snippets : name => concat(value, custom) }
   clc_snippets = { for name, paths in var.clc_snippets : name => [ for path in paths : file(path)] }
   network_ip_autodetection_method = "can-reach=${var.matchbox_addr}"
   kernel_args = ["flatcar.autologin"]
