@@ -2,6 +2,8 @@
 
 no-daemon
 dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}},infinite
+dhcp-option=3
+dhcp-option=6
 
 enable-tftp
 tftp-root=/var/lib/tftpboot

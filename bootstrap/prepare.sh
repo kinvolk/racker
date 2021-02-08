@@ -447,51 +447,44 @@ function gen_cluster_vars() {
   else
     echo 'kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]' >> lokocfg.vars
     echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool chassis bootdev disk options=persistent,efiboot && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'\"" >> lokocfg.vars
-    local mapping=""
-    for i in $(seq 0 $((${#MAC_ADDRESS_LIST[*]} - 1))); do
-      mapping+="      ${MAC_ADDRESS_LIST[i]})
-        bmcmac=${BMC_MAC_ADDRESS_LIST[i]}
-        bmcipaddr=""
-        step="poweroff"
-        count=60
-        while [ \$count -gt 0 ]; do
-          count=\$((count - 1))
-          sleep 1
-          if [ \"\$bmcipaddr\" = \"\" ]; then
-            bmcipaddr=\$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c \"arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1\")
-          fi
-          if [ \"\$bmcipaddr\" = \"\" ]; then
-            continue
-          fi
-          if [ \"\$step\" = poweroff ]; then
-            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
-            step=bootdev
-            continue
-          elif [ \"\$step\" = bootdev ]; then
-            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe options=persistent || continue
-            step=poweron
-            continue
-          else
-            docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on || continue
-            break
-          fi
-          break # not reached
-        done
-        if [ \$count -eq 0 ]; then
-          echo \"error: failed forcing a PXE boot for \$domain installer\"
-          exit 1
-        fi
-        ;;
-"
-    done
+    # EOF is the bash heredoc, EOT the terraform hcl heredoc. We escape $var as \$var for the bash heredoc, use ${VAR} for the bash heredoc substitution, and \${var} would be for terraform sustitution but it's not used.
     tee -a lokocfg.vars <<-EOF
 	pxe_commands = <<EOT
-	case \$mac in
-	$mapping
-	      *)
-	        echo "BMC MAC address not found"
-	        exit 1
-	esac
+	bmcmac=\$(grep -m 1 "\$mac" /usr/share/oem/nodes.csv | cut -d , -f 2)
+	if [ "\$bmcmac" = "" ]; then
+	  echo "BMC MAC address not found for \$mac"
+	  exit 1
+	fi # but may contain whitespace, thus use without quotes
+	bmcipaddr=""
+	step="poweroff"
+	count=60
+	while [ \$count -gt 0 ]; do
+	  count=\$((count - 1))
+	  sleep 1
+	  if [ "\$bmcipaddr" = "" ]; then
+	    bmcipaddr=\$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1")
+	  fi
+	  if [ "\$bmcipaddr" = "" ]; then
+	    continue
+	  fi
+	  if [ "\$step" = poweroff ]; then
+	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
+	    step=bootdev
+	    continue
+	  elif [ "\$step" = bootdev ]; then
+	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe options=persistent || continue
+	    step=poweron
+	    continue
+	  else
+	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on || continue
+	    break
+	  fi
+	  break # not reached
+	done
+	if [ \$count -eq 0 ]; then
+	  echo "error: failed forcing a PXE boot for \$domain installer"
+	  exit 1
+	fi
 	EOT
 EOF
   fi
