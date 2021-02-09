@@ -12,6 +12,12 @@ if ! nsenter -a -t 1 true || [ "$(nsenter -a -t 1 ls "$ARCHIVE" 2> /dev/null)" !
   exit 1
 fi
 
+LOCKSMITH_ENABLED=$(nsenter -a -t 1 systemctl is-active --quiet locksmithd && echo true || echo false)
+if $LOCKSMITH_ENABLED; then
+  # Stop locksmith to prevent a possible reboot while bootstrapping
+  nsenter -a -t 1 systemctl stop locksmithd
+fi
+
 nsenter -a -t 1 mkdir -p $INSTALLER_DIR
 nsenter -a -t 1 sh -c "rm -rf $INSTALLER_DIR/*"
 
@@ -27,5 +33,10 @@ nsenter -a -t 1 ln -fs /opt/racker/bin/lokoctl /opt/bin/lokoctl
 nsenter -a -t 1 ln -fs /opt/racker/bin/terraform /opt/bin/terraform
 nsenter -a -t 1 ln -fs /opt/racker/bin/kubectl /opt/bin/kubectl
 nsenter -a -t 1 ln -fs /opt/racker/bootstrap/ipmi /opt/bin/ipmi
+
+# Start locksmith again, if it was enabled before
+if $LOCKSMITH_ENABLED; then
+  nsenter -a -t 1 systemctl start locksmithd || true
+fi
 
 echo "Installation complete, you may now run: racker"
