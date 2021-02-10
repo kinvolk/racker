@@ -468,61 +468,32 @@ EOF
   worker_names+="]"
   clc_snippets+=$'\n'"}"
   installer_clc_snippets+=$'\n'"}"
-  echo "cluster_name = \"${CLUSTER_NAME}\"" > lokocfg.vars
-  echo "asset_dir = \"${ASSET_DIR}\"" >> lokocfg.vars
-  echo "controller_macs = ${controller_macs}" >> lokocfg.vars
-  echo "worker_macs = ${worker_macs}" >> lokocfg.vars
-  echo "controller_names = ${controller_names}" >> lokocfg.vars
-  echo "worker_names = ${worker_names}" >> lokocfg.vars
-  echo "matchbox_addr = \"$(get_matchbox_ip_addr)\"" >> lokocfg.vars
-  echo "clc_snippets = ${clc_snippets}" >> lokocfg.vars
-  echo "installer_clc_snippets = ${installer_clc_snippets}" >> lokocfg.vars
+  # We escape $var as \$var for the bash heredoc to preserve it as Terraform string, use ${VAR} for the bash heredoc substitution.
+  # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
+  # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
+  # which would be a Terraform variable).
+  tee lokocfg.vars <<-EOF
+	cluster_name = "${CLUSTER_NAME}"
+	asset_dir = "${ASSET_DIR}"
+	controller_macs = ${controller_macs}
+	worker_macs = ${worker_macs}
+	controller_names = ${controller_names}
+	worker_names = ${worker_names}
+	matchbox_addr = "$(get_matchbox_ip_addr)"
+	clc_snippets = ${clc_snippets}
+	installer_clc_snippets = ${installer_clc_snippets}
+EOF
   if [ -n "$USE_QEMU" ]; then
-    echo 'kernel_console = []' >> lokocfg.vars
-    echo 'install_pre_reboot_cmds = ""' >> lokocfg.vars
-    echo "pxe_commands = \"sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network\"" >> lokocfg.vars
-  else
-    echo 'kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]' >> lokocfg.vars
-    echo "install_pre_reboot_cmds = \"docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool chassis bootdev disk options=persistent,efiboot && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'\"" >> lokocfg.vars
-    # EOF is the bash heredoc, EOT the terraform hcl heredoc. We escape $var as \$var for the bash heredoc, use ${VAR} for the bash heredoc substitution, and \${var} would be for terraform sustitution but it's not used.
     tee -a lokocfg.vars <<-EOF
-	pxe_commands = <<EOT
-	bmcmac=\$(grep -m 1 "\$mac" /usr/share/oem/nodes.csv | cut -d , -f 2)
-	if [ "\$bmcmac" = "" ]; then
-	  echo "BMC MAC address not found for \$mac"
-	  exit 1
-	fi # but may contain whitespace, thus use without quotes
-	bmcipaddr=""
-	step="poweroff"
-	count=60
-	while [ \$count -gt 0 ]; do
-	  count=\$((count - 1))
-	  sleep 1
-	  if [ "\$bmcipaddr" = "" ]; then
-	    bmcipaddr=\$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T \$bmcmac --interface ${PXE_INTERFACE} | grep -m 1 \$bmcmac | cut -f 1")
-	  fi
-	  if [ "\$bmcipaddr" = "" ]; then
-	    continue
-	  fi
-	  if [ "\$step" = poweroff ]; then
-	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
-	    step=bootdev
-	    continue
-	  elif [ "\$step" = bootdev ]; then
-	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe options=persistent || continue
-	    step=poweron
-	    continue
-	  else
-	    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H \$bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on || continue
-	    break
-	  fi
-	  break # not reached
-	done
-	if [ \$count -eq 0 ]; then
-	  echo "error: failed forcing a PXE boot for \$domain installer"
-	  exit 1
-	fi
-	EOT
+	kernel_console = []
+	install_pre_reboot_cmds = ""
+	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
+EOF
+  else
+    tee -a lokocfg.vars <<-EOF
+	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
+	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool chassis bootdev disk options=persistent,efiboot && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
+	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
 EOF
   fi
 
