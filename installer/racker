@@ -105,6 +105,26 @@ elif [ "$1" = bootstrap ]; then
     sudo systemctl stop locksmithd
   fi
 
+  # testing: use static IP addrs
+  # get sorted nodes without mgmt node
+  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
+  PUBLIC_IP_ADDRS=""
+  count=110
+  while IFS= read -r line
+  do
+    sec_mac=$(echo "$line" | cut -d , -f 3)
+    ip_addr="172.18.4.${count}"
+    PUBLIC_IP_ADDRS+=" ${sec_mac}-${ip_addr}/22-172.18.4.9-172.18.4.9"
+    let count+=1
+    if [ $count -eq 114 ] || [ $count -eq 115 ]; then
+      let count+=1
+    fi
+    if [ $count -eq 182 ]; then
+       exit 1
+    fi
+  done <<< "$NODES"
+  export PUBLIC_IP_ADDRS
+  #
   ret=0
   USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red CLUSTER_NAME=firebox /opt/racker/bootstrap/prepare.sh create || ret=$?
 

@@ -5,6 +5,7 @@ set -euo pipefail
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
+PUBLIC_IP_ADDRS=(${PUBLIC_IP_ADDRS:-"DHCP"}) # otherwise a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
 CONTROLLER_TYPE=${CONTROLLER_TYPE:-""} # an empty string means any node type
 SUBNET_PREFIX=${SUBNET_PREFIX:-"172.24.213"}
@@ -397,6 +398,7 @@ function gen_cluster_vars() {
   local controller_names="["
   local worker_names="["
   local clc_snippets="{"$'\n'
+  local installer_clc_snippets="{"$'\n'
   local ip_address=""
   local controller_hosts=""
   local id=""
@@ -420,8 +422,40 @@ function gen_cluster_vars() {
       worker_names+="\"${id}\", "
     fi
     mkdir -p cl
-    clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\"]"$'\n'
+    clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\", \"cl/${id}-custom.yaml\"]"$'\n'
     sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "cl/${id}.yaml"
+    # PUBLIC_IP_ADDRS=(${PUBLIC_IP_ADDRS:-"DHCP"}) # otherwise a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+    if [ "${PUBLIC_IP_ADDRS[0]}" != "DHCP" ]; then
+      installer_clc_snippets+="\"${id}\" = [\"cl/${id}-custom.yaml\"]"$'\n'
+      for entry in ${PUBLIC_IP_ADDRS[*]}; do
+        unpacked=($(echo $entry | tr - ' '))
+        secondary_mac="${unpacked[0]}"
+        ipv4_addr_and_subnet="${unpacked[1]}"
+        gateway="${unpacked[2]}"
+        dns="${unpacked[3]}"
+        if [ "$(grep ${mac} /usr/share/oem/nodes.csv | grep ${secondary_mac})" != "" ]; then
+          tee -a "cl/${id}-custom.yaml" <<-EOF
+	networkd:
+	  units:
+	    - name: 10-public-stable.network
+	      contents: |
+	        [Match]
+	        MACAddress=${secondary_mac}
+	        [Address]
+	        Address=${ipv4_addr_and_subnet}
+	        [Network]
+	        DHCP=no
+	        LinkLocalAddressing=no
+	        DNS=${dns}
+	        [Route]
+	        Destination=0.0.0.0/0
+	        Gateway=${gateway}
+EOF
+        fi
+      done
+    else
+      echo > "cl/${id}-custom.yaml"
+    fi
     if [ "$name" = "controller" ] && [ "$count" = "${CONTROLLER_AMOUNT}" ]; then
       count=0
       name="worker"
@@ -433,6 +467,7 @@ function gen_cluster_vars() {
   controller_names+="]"
   worker_names+="]"
   clc_snippets+=$'\n'"}"
+  installer_clc_snippets+=$'\n'"}"
   echo "cluster_name = \"${CLUSTER_NAME}\"" > lokocfg.vars
   echo "asset_dir = \"${ASSET_DIR}\"" >> lokocfg.vars
   echo "controller_macs = ${controller_macs}" >> lokocfg.vars
@@ -441,6 +476,7 @@ function gen_cluster_vars() {
   echo "worker_names = ${worker_names}" >> lokocfg.vars
   echo "matchbox_addr = \"$(get_matchbox_ip_addr)\"" >> lokocfg.vars
   echo "clc_snippets = ${clc_snippets}" >> lokocfg.vars
+  echo "installer_clc_snippets = ${installer_clc_snippets}" >> lokocfg.vars
   if [ -n "$USE_QEMU" ]; then
     echo 'kernel_console = []' >> lokocfg.vars
     echo 'install_pre_reboot_cmds = ""' >> lokocfg.vars

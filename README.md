@@ -53,10 +53,10 @@ categorized by their type (HW specs)
 Example `nodes.csv`:
 
 ```
-Primary MAC address, BMC MAC address, Node Type, Comments
-00:11:22:33:44:00, 00:11:22:33:44:01, red, mgmt node # for completeness the management node itself, will be ignored
-00:11:22:33:44:10, 00:11:22:33:44:11, red, controller
-00:11:22:33:44:20, 00:11:22:33:44:21, purple, worker
+Primary MAC address, BMC MAC address, Secondary MAC address, Node Type, Comments
+00:11:22:33:44:00, 00:11:22:33:44:01, 00:11:22:33:44:30, red, mgmt node # for completeness the management node itself, will be ignored
+00:11:22:33:44:10, 00:11:22:33:44:11, 00:11:22:33:44:40, red, controller
+00:11:22:33:44:20, 00:11:22:33:44:21, 00:11:22:33:44:50, purple, worker
 ```
 
 ### Provisioning a Lokomotive Kubernetes cluster
