@@ -23,6 +23,7 @@ systemd:
         After=network-online.target
         [Service]
         Type=oneshot
+        RemainAfterExit=yes
         Restart=on-failure
         RestartSec=5s
         ExecStart=docker run --privileged --net host --rm quay.io/kinvolk/racker:{{RACKER_VERSION}} sh -c 'ipmitool chassis bootdev disk options=persistent,efiboot && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'
