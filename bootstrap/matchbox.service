@@ -10,7 +10,7 @@ RestartSec=5s
 TimeoutStartSec=0
 EnvironmentFile=/opt/racker-state/matchbox-service
 ExecStartPre=-docker rm -f matchbox
-ExecStartPre=sh -c "${MATCHBOX_CMD}"
+ExecStartPre=docker run --name matchbox -d --net=host -v /opt/racker-state/matchbox/certs:/etc/matchbox:Z -v /opt/racker-state/matchbox/assets:/var/lib/matchbox/assets:Z -v /opt/racker-state/matchbox:/var/lib/matchbox -v /opt/racker-state/matchbox/groups:/var/lib/matchbox/groups quay.io/coreos/matchbox:v0.7.0 -address=${MATCHBOX_IP_ADDR}:8080 -log-level=debug -rpc-address=${MATCHBOX_IP_ADDR}:8081
 ExecStart=docker logs -f matchbox
 ExecStop=docker stop matchbox
 ExecStopPost=docker rm matchbox

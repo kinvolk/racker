@@ -271,20 +271,12 @@ function create_containers() {
 
   sudo mkdir -p "/opt/racker-state/matchbox/groups"
   sudo chown -R $USER:$USER "/opt/racker-state/matchbox"
-  MATCHBOX_CMD="docker run --name matchbox \
-    -d \
-    --net=host \
-    -v /opt/racker-state/matchbox/certs:/etc/matchbox:Z \
-    -v /opt/racker-state/matchbox/assets:/var/lib/matchbox/assets:Z \
-    -v /opt/racker-state/matchbox:/var/lib/matchbox \
-    -v /opt/racker-state/matchbox/groups:/var/lib/matchbox/groups \
-    quay.io/coreos/matchbox:v0.7.0 -address=$(get_matchbox_ip_addr):8080 \
-    -log-level=debug -rpc-address=$(get_matchbox_ip_addr):8081"
   if [ -n "$USE_QEMU" ]; then
-    $MATCHBOX_CMD
+    MATCHBOX_CMD="$(grep -m 1 "ExecStartPre=docker run" "${SCRIPTFOLDER}/matchbox.service" | cut -d = -f 2- | sed "s/\${MATCHBOX_IP_ADDR}/$(get_matchbox_ip_addr)/g")"
+    ${MATCHBOX_CMD}
   else
     sudo tee /opt/racker-state/matchbox-service <<-EOF
-	MATCHBOX_CMD="${MATCHBOX_CMD}"
+	MATCHBOX_IP_ADDR="$(get_matchbox_ip_addr)"
 EOF
     # systemctl daemon-reload is not needed because we only change the env file
     sudo systemctl enable matchbox.service
@@ -293,19 +285,13 @@ EOF
 
   prepare_dnsmasq_conf
 
-  DNSMASQ_CMD="docker run --name dnsmasq \
-    -d \
-    --cap-add=NET_ADMIN \
-    -v /opt/racker-state/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z \
-    --net=host \
-    quay.io/coreos/dnsmasq:v0.5.0 -d"
   if [ -n "$USE_QEMU" ]; then
+    DNSMASQ_CMD="$(grep -m 1 "ExecStartPre=docker run" "${SCRIPTFOLDER}/dnsmasq.service" | cut -d = -f 2-)"
+    # (use real root here in case docker is actually podman with a user namespace)
     sudo ${DNSMASQ_CMD}
   else
-    sudo tee /opt/racker-state/dnsmasq-service <<-EOF
-	DNSMASQ_CMD="${DNSMASQ_CMD}"
-EOF
-    # systemctl daemon-reload is not needed because we only change the env file
+    sudo touch /opt/racker-state/dnsmasq-service
+    # systemctl daemon-reload is not needed because we only created the env file/condition file
     sudo systemctl enable dnsmasq.service
     sudo systemctl restart dnsmasq.service
   fi
