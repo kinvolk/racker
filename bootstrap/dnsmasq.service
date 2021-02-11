@@ -1,0 +1,18 @@
+[Unit]
+Description=dnsmasq DHCP/PXE/TFTP server
+Wants=docker.service
+After=docker.service
+ConditionPathExists=/opt/racker-state/dnsmasq-service
+[Service]
+Type=simple
+Restart=always
+RestartSec=5s
+TimeoutStartSec=0
+EnvironmentFile=/opt/racker-state/dnsmasq-service
+ExecStartPre=-docker rm -f dnsmasq
+ExecStartPre=sh -c "${DNSMASQ_CMD}"
+ExecStart=docker logs -f dnsmasq
+ExecStop=docker stop dnsmasq
+ExecStopPost=docker rm dnsmasq
+[Install]
+WantedBy=multi-user.target

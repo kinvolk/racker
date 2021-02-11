@@ -283,24 +283,10 @@ function create_containers() {
   if [ -n "$USE_QEMU" ]; then
     $MATCHBOX_CMD
   else
-    sudo tee /etc/systemd/system/matchbox.service <<-EOF
-	[Unit]
-	Description=matchbox server for PXE images and Ignition configuration
-	Wants=docker.service
-	After=docker.service
-	[Service]
-	Type=simple
-	Restart=always
-	RestartSec=5s
-	TimeoutStartSec=0
-	ExecStartPre=-docker rm -f matchbox
-	ExecStartPre=${MATCHBOX_CMD}
-	ExecStart=docker logs -f matchbox
-	ExecStop=docker stop matchbox
-	ExecStopPost=docker rm matchbox
-	[Install]
-	WantedBy=multi-user.target
+    sudo tee /opt/racker-state/matchbox-service <<-EOF
+	MATCHBOX_CMD="${MATCHBOX_CMD}"
 EOF
+    # systemctl daemon-reload is not needed because we only change the env file
     sudo systemctl enable matchbox.service
     sudo systemctl restart matchbox.service
   fi
@@ -316,24 +302,10 @@ EOF
   if [ -n "$USE_QEMU" ]; then
     sudo ${DNSMASQ_CMD}
   else
-    sudo tee /etc/systemd/system/dnsmasq.service <<-EOF
-	[Unit]
-	Description=dnsmasq DHCP/PXE/TFTP server
-	Wants=docker.service
-	After=docker.service
-	[Service]
-	Type=simple
-	Restart=always
-	RestartSec=5s
-	TimeoutStartSec=0
-	ExecStartPre=-docker rm -f dnsmasq
-	ExecStartPre=${DNSMASQ_CMD}
-	ExecStart=docker logs -f dnsmasq
-	ExecStop=docker stop dnsmasq
-	ExecStopPost=docker rm dnsmasq
-	[Install]
-	WantedBy=multi-user.target
+    sudo tee /opt/racker-state/dnsmasq-service <<-EOF
+	DNSMASQ_CMD="${DNSMASQ_CMD}"
 EOF
+    # systemctl daemon-reload is not needed because we only change the env file
     sudo systemctl enable dnsmasq.service
     sudo systemctl restart dnsmasq.service
   fi
