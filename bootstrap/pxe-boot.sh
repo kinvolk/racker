@@ -5,19 +5,19 @@ set -euo pipefail
 mac="$1"
 domain="$2"
 
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+
 RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then
   RACKER_VERSION="latest"
 fi
 IPMI_USER=$(cat /usr/share/oem/ipmi_user)
 IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
-PXE_INTERFACE=$(cat /usr/share/oem/pxe_interface)
+
+PXE_INTERFACE="$("${SCRIPTFOLDER}"/get-pxe-interface.sh)"
 if [ "${PXE_INTERFACE}" = "" ]; then
-  echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+  echo "Error getting PXE interface"
   exit 1
-fi
-if [[ "${PXE_INTERFACE}" == *:* ]]; then
-  PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
 fi
 
 bmcmac=$(grep -m 1 "$mac" /usr/share/oem/nodes.csv | cut -d , -f 2)

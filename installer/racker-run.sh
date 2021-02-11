@@ -33,6 +33,18 @@ nsenter -a -t 1 ln -fs /opt/racker/bin/lokoctl /opt/bin/lokoctl
 nsenter -a -t 1 ln -fs /opt/racker/bin/terraform /opt/bin/terraform
 nsenter -a -t 1 ln -fs /opt/racker/bin/kubectl /opt/bin/kubectl
 nsenter -a -t 1 ln -fs /opt/racker/bootstrap/ipmi /opt/bin/ipmi
+nsenter -a -t 1 ln -fs /opt/racker/bootstrap/matchbox.service /etc/systemd/system/matchbox.service
+nsenter -a -t 1 ln -fs /opt/racker/bootstrap/dnsmasq.service /etc/systemd/system/dnsmasq.service
+
+# restart updated services if active
+if nsenter -a -t 1 systemctl is-active --quiet dnsmasq; then
+  nsenter -a -t 1 systemctl daemon-reload
+  nsenter -a -t 1 systemctl restart dnsmasq
+fi
+if nsenter -a -t 1 systemctl is-active --quiet matchbox; then
+  nsenter -a -t 1 systemctl daemon-reload
+  nsenter -a -t 1 systemctl restart matchbox
+fi
 
 # Start locksmith again, if it was enabled before
 if $LOCKSMITH_ENABLED; then

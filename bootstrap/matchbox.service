@@ -1,0 +1,18 @@
+[Unit]
+Description=matchbox server for PXE images and Ignition configuration
+Wants=docker.service
+After=docker.service
+ConditionPathExists=/opt/racker-state/matchbox-service
+[Service]
+Type=simple
+Restart=always
+RestartSec=5s
+TimeoutStartSec=0
+EnvironmentFile=/opt/racker-state/matchbox-service
+ExecStartPre=-docker rm -f matchbox
+ExecStartPre=sh -c "${MATCHBOX_CMD}"
+ExecStart=docker logs -f matchbox
+ExecStop=docker stop matchbox
+ExecStopPost=docker rm matchbox
+[Install]
+WantedBy=multi-user.target

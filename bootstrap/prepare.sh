@@ -58,13 +58,10 @@ else
   ls /usr/share/oem/ipmi_user /usr/share/oem/ipmi_password > /dev/null || { echo "The IPMI user and the IPMI password files /usr/share/oem/ipmi_user and /usr/share/oem/ipmi_password are missing" ; exit 1 ; }
   IPMI_USER=$(cat /usr/share/oem/ipmi_user)
   IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
-  PXE_INTERFACE="$(cat /usr/share/oem/pxe_interface || true)"
+  PXE_INTERFACE="$("${SCRIPTFOLDER}"/get-pxe-interface.sh)"
   if [ "${PXE_INTERFACE}" = "" ]; then
-    echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+    echo "Error getting PXE interface"
     exit 1
-  fi
-  if [[ "${PXE_INTERFACE}" == *:* ]]; then
-    PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
   fi
   # Skip header line, filter out the management node itself and sort by MAC address
   NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
@@ -286,24 +283,10 @@ function create_containers() {
   if [ -n "$USE_QEMU" ]; then
     $MATCHBOX_CMD
   else
-    sudo tee /etc/systemd/system/matchbox.service <<-EOF
-	[Unit]
-	Description=matchbox server for PXE images and Ignition configuration
-	Wants=docker.service
-	After=docker.service
-	[Service]
-	Type=simple
-	Restart=always
-	RestartSec=5s
-	TimeoutStartSec=0
-	ExecStartPre=-docker rm -f matchbox
-	ExecStartPre=${MATCHBOX_CMD}
-	ExecStart=docker logs -f matchbox
-	ExecStop=docker stop matchbox
-	ExecStopPost=docker rm matchbox
-	[Install]
-	WantedBy=multi-user.target
+    sudo tee /opt/racker-state/matchbox-service <<-EOF
+	MATCHBOX_CMD="${MATCHBOX_CMD}"
 EOF
+    # systemctl daemon-reload is not needed because we only change the env file
     sudo systemctl enable matchbox.service
     sudo systemctl restart matchbox.service
   fi
@@ -319,24 +302,10 @@ EOF
   if [ -n "$USE_QEMU" ]; then
     sudo ${DNSMASQ_CMD}
   else
-    sudo tee /etc/systemd/system/dnsmasq.service <<-EOF
-	[Unit]
-	Description=dnsmasq DHCP/PXE/TFTP server
-	Wants=docker.service
-	After=docker.service
-	[Service]
-	Type=simple
-	Restart=always
-	RestartSec=5s
-	TimeoutStartSec=0
-	ExecStartPre=-docker rm -f dnsmasq
-	ExecStartPre=${DNSMASQ_CMD}
-	ExecStart=docker logs -f dnsmasq
-	ExecStop=docker stop dnsmasq
-	ExecStopPost=docker rm dnsmasq
-	[Install]
-	WantedBy=multi-user.target
+    sudo tee /opt/racker-state/dnsmasq-service <<-EOF
+	DNSMASQ_CMD="${DNSMASQ_CMD}"
 EOF
+    # systemctl daemon-reload is not needed because we only change the env file
     sudo systemctl enable dnsmasq.service
     sudo systemctl restart dnsmasq.service
   fi
