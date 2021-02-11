@@ -58,13 +58,10 @@ else
   ls /usr/share/oem/ipmi_user /usr/share/oem/ipmi_password > /dev/null || { echo "The IPMI user and the IPMI password files /usr/share/oem/ipmi_user and /usr/share/oem/ipmi_password are missing" ; exit 1 ; }
   IPMI_USER=$(cat /usr/share/oem/ipmi_user)
   IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
-  PXE_INTERFACE="$(cat /usr/share/oem/pxe_interface || true)"
+  PXE_INTERFACE="$("${SCRIPTFOLDER}"/get-pxe-interface.sh)"
   if [ "${PXE_INTERFACE}" = "" ]; then
-    echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+    echo "Error getting PXE interface"
     exit 1
-  fi
-  if [[ "${PXE_INTERFACE}" == *:* ]]; then
-    PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
   fi
   # Skip header line, filter out the management node itself and sort by MAC address
   NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"

@@ -21,6 +21,9 @@ if [[ "${NODE}" != *:* ]]; then
     exit 1
   fi
 fi
+
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+
 if [ "${USE_STDIN}" = 1 ] || [ "${USE_TTY}" = 1 ]; then
   ARGS="-"
   if [ "${USE_STDIN}" = 1 ]; then
@@ -37,17 +40,10 @@ if [[ "${BMC}" != *:* ]]; then
   echo "could not find BMC MAC for $1 using ${NODE}"
   exit 1
 fi
-PXE_INTERFACE="$(cat /usr/share/oem/pxe_interface || true)"
+PXE_INTERFACE="$("${SCRIPTFOLDER}"/get-pxe-interface.sh)"
 if [ "${PXE_INTERFACE}" = "" ]; then
-  echo "The PXE interface file /usr/share/oem/pxe_interface is missing"
+  echo "Error getting PXE interface"
   exit 1
-fi
-if [[ "${PXE_INTERFACE}" == *:* ]]; then
-  PXE_INTERFACE="$(grep -m 1 "${PXE_INTERFACE}" /sys/class/net/*/address | cut -d / -f 5 | tail -n 1)"
-  if [ "${PXE_INTERFACE}" = "" ]; then
-    echo "Could not find interface name for the PXE MAC address"
-    exit 1
-  fi
 fi
 RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then
