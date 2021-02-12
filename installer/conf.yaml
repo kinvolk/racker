@@ -3,6 +3,8 @@ modules:
   - name: .
     assets:
     - type: file
+      path: ../wizard
+    - type: file
       path: ./racker
     - type: file
       path: ../bootstrap
@@ -19,6 +21,7 @@ modules:
       branch: "kai/baremetal"
     build-commands:
     - mkdir bin
+    - cd ./wizard && go build -o args-wizard ./args-wizard.go && mv ./args-wizard ../bin/ && cd .. && rm -rf ./wizard
     - mv racker bin/
     - unzip terraform.zip -d bin/ && rm terraform.zip
     - mv kubectl bin/ && chmod +x bin/kubectl

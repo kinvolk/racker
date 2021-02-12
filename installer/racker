@@ -125,8 +125,18 @@ elif [ "$1" = bootstrap ]; then
   done <<< "$NODES"
   export PUBLIC_IP_ADDRS
   #
+
+  ARGS_FILE="$(mktemp)"
+  # Ask for the configuration and save it in a temp file
+  args-wizard -config /opt/racker/bootstrap/args.yaml > $ARGS_FILE -- ${@:2}
+
+  # Load the variables into context
+  set -a
+  . $ARGS_FILE
+  set +a
+
   ret=0
-  USE_QEMU=0 CONTROLLER_AMOUNT=3 CONTROLLER_TYPE=red CLUSTER_NAME=firebox /opt/racker/bootstrap/prepare.sh create || ret=$?
+  USE_QEMU=0 /opt/racker/bootstrap/prepare.sh create || ret=$?
 
   # Start locksmith again, if it was enabled before
   if $LOCKSMITH_ENABLED; then
