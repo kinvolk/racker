@@ -466,20 +466,18 @@ if [ "$1" = create ]; then
   create_ssh_key
   create_containers
 
-  if [ "$(ssh-add -L | grep "$(head -n 1 ~/.ssh/id_rsa.pub | cut -d ' ' -f 1-2)")" = "" ]; then
-    eval "$(ssh-agent)"
-    ssh-add ~/.ssh/id_rsa
-  fi
-
   gen_cluster_vars
 
-  lokoctl cluster apply --verbose --skip-components
+  lokoctl cluster apply --verbose --skip-components || { echo "If individual nodes did not come up, try: cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check -v" ; exit 1; }
   lokoctl component apply
   if [ -z "$USE_QEMU" ]; then
     echo "Setting up ~/.kube/config symlink for kubectl"
     ln -fs "${ASSET_DIR}/cluster-assets/auth/kubeconfig" ~/.kube/config
   fi
-  echo "Now you can directly change the baremetal.lokocfg config and run: lokoctl cluster|component apply, this script here is not needed anymore"
+  echo "The cluster is ready."
+  echo "Running the racker bootstrap command is not needed anymore if you want to change something."
+  echo "To modify the settings you can now directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+  echo "  cd lokomotive; lokoctl cluster|component apply"
 else
   if [ -n "$USE_QEMU" ]; then
     destroy_all

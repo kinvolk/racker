@@ -96,7 +96,11 @@ elif [ "$1" = bootstrap ]; then
     exec sh -c "racker bootstrap"
   fi
   # actually run the setup wizard here
-  mkdir ~/lokomotive || { echo "a Lokomotive configuration already exists, remove the $HOME/lokomotive folder first"; exit 1 ; }
+  mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
+    echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+    echo "  cd lokomotive; lokoctl cluster|component apply"
+    echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+    exit 1 ; }
   cd ~/lokomotive
 
   LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
