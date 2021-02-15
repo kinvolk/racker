@@ -466,11 +466,6 @@ if [ "$1" = create ]; then
   create_ssh_key
   create_containers
 
-  if [ "$(ssh-add -L | grep "$(head -n 1 ~/.ssh/id_rsa.pub | cut -d ' ' -f 1-2)")" = "" ]; then
-    eval "$(ssh-agent)"
-    ssh-add ~/.ssh/id_rsa
-  fi
-
   gen_cluster_vars
 
   lokoctl cluster apply --verbose --skip-components

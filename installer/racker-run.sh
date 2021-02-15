@@ -30,7 +30,7 @@ nsenter -a -t 1 mkdir -p /opt/bin
 # previous runs.
 nsenter -a -t 1 ln -fs /opt/racker/bin/racker /opt/bin/racker
 nsenter -a -t 1 ln -fs /opt/racker/bin/args-wizard /opt/bin/args-wizard
-nsenter -a -t 1 ln -fs /opt/racker/bin/lokoctl /opt/bin/lokoctl
+nsenter -a -t 1 ln -fs /opt/racker/bootstrap/lokoctl-wrapper /opt/bin/lokoctl
 nsenter -a -t 1 ln -fs /opt/racker/bin/terraform /opt/bin/terraform
 nsenter -a -t 1 ln -fs /opt/racker/bin/kubectl /opt/bin/kubectl
 nsenter -a -t 1 ln -fs /opt/racker/bootstrap/ipmi /opt/bin/ipmi

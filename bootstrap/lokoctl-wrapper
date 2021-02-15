@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+export SSH_AUTH_SOCK=/tmp/ssh-agent.sock
+ret=0
+ssh-add -l 2>/dev/null >/dev/null || ret=$?
+if [ $ret -ge 2 ]; then
+  ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null
+fi
+if [ "$(ssh-add -L | grep "$(head -n 1 ~/.ssh/id_rsa.pub | cut -d ' ' -f 1-2)")" = "" ]; then
+  ssh-add ~/.ssh/id_rsa >/dev/null || echo "Warning: Could not add ~/.ssh/id_rsa to ssh-agent"
+fi
+
+/opt/racker/bin/lokoctl "$@"
