@@ -29,7 +29,8 @@ else
   bmcmac=$(echo $bmcmac)
 fi
 bmcipaddr=""
-step="poweroff"
+# poweron must be the last because when the OS comes up it does its own IPMI setup and we also don't know when any step after poweron would be executed
+steps=(bootdev poweroff bootdev poweron)
 count=60
 while [ $count -gt 0 ]; do
   count=$((count - 1))
@@ -40,13 +41,13 @@ while [ $count -gt 0 ]; do
   if [ "$bmcipaddr" = "" ]; then
     continue
   fi
-  if [ "$step" = poweroff ]; then
+  if [ "${steps[0]}" = poweroff ]; then
     docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
-    step=bootdev
+    steps=(${steps[*]:1})
     continue
-  elif [ "$step" = bootdev ]; then
+  elif [ "${steps[0]}" = bootdev ]; then
     docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe options=persistent || continue
-    step=poweron
+    steps=(${steps[*]:1})
     continue
   else
     docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power on || continue
