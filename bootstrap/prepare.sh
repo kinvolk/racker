@@ -7,7 +7,11 @@ CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
 PUBLIC_IP_ADDRS=(${PUBLIC_IP_ADDRS:-"DHCP"}) # otherwise a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
-CONTROLLER_TYPE=${CONTROLLER_TYPE:-""} # an empty string means any node type
+CONTROLLER_TYPE=${CONTROLLER_TYPE:-"any"}
+if [ "${CONTROLLER_TYPE}" = "any" ]; then
+  # use the empty string to match all entries in the node type column of the nodes.csv file
+  CONTROLLER_TYPE=""
+fi
 SUBNET_PREFIX=${SUBNET_PREFIX:-"172.24.213"}
 RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then

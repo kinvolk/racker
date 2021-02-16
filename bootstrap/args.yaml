@@ -17,11 +17,11 @@ args:
     type: select
 - name: controller-type
   var: CONTROLLER_TYPE
-  help: Leave empty for any controller type
-  default:
+  help: With different hardware in a rack you can specify which ones to use for the Kubernetes control plane (The node types are annotated in /usr/share/oem/nodes.csv).
+  default: any
   options:
-  -
+  - any
   - ${node_types}
   prompt:
-    message: Choose a controller type
+    message: Choose a server type for the controller nodes
     type: select
