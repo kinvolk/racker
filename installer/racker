@@ -130,9 +130,13 @@ elif [ "$1" = bootstrap ]; then
   export PUBLIC_IP_ADDRS
   #
 
-  ARGS_FILE="$(mktemp)"
+  # Find the list of available node types, excluding the management node
+  node_types_list=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 4 | sed 's/ //g' | sort | uniq)
+  # Format it as YAML entries, adding a "  - " prefix, and, for sed, a "\n" string as newline directive (but only between the elements)
+  node_types=$(echo -n "${node_types_list}" | sed 's/^/  - /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
-  args-wizard -config /opt/racker/bootstrap/args.yaml > $ARGS_FILE -- ${@:2}
+  ARGS_FILE="$(mktemp)"
+  args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- ${@:2}
 
   # Load the variables into context
   set -a
