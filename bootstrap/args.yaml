@@ -18,11 +18,10 @@ args:
 - name: controller-type
   var: CONTROLLER_TYPE
   help: Leave empty for any controller type
-  default: red
+  default:
   options:
   -
-  - red
-  - purple
+  - ${node_types}
   prompt:
     message: Choose a controller type
     type: select
