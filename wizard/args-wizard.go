@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/AlecAivazis/survey/v2"
 	"gopkg.in/yaml.v2"
@@ -18,18 +19,54 @@ type Prompt struct {
 	Default interface{} `yaml:",omitempty"`
 }
 
+type ArgOption struct {
+	Display string `yaml:",omitempty"`
+	Value   string `yaml:",omitempty"`
+}
+
 type Arg struct {
-	Name    string   `yaml:",omitempty"`
-	Var     string   `yaml:",omitempty"`
-	Default string   `yaml:",omitempty"`
-	Prompt  Prompt   `yaml:",omitempty"`
-	Options []string `yaml:",omitempty"`
-	Help    string   `yaml:",omitempty"`
+	Name    string      `yaml:",omitempty"`
+	Var     string      `yaml:",omitempty"`
+	Default string      `yaml:",omitempty"`
+	Prompt  Prompt      `yaml:",omitempty"`
+	Options []ArgOption `yaml:",omitempty"`
+	Help    string      `yaml:",omitempty"`
 }
 
 type InstallerConf struct {
 	OutputFilename string `yaml:"output-file,omitempty"`
 	Args           []Arg  `yaml:",omitempty"`
+}
+
+func (o *ArgOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var optString string
+	if err := unmarshal(&optString); err != nil {
+		var optInt int
+		if err := unmarshal(&optInt); err != nil {
+			var m map[string]string
+			if err := unmarshal(&m); err != nil {
+				return err
+			}
+			o.Value = m["value"]
+			o.Display = m["display"]
+			return nil
+		}
+
+		optString = strconv.Itoa(optInt)
+	}
+
+	o.Display = optString
+	o.Value = optString
+
+	return nil
+}
+
+func argOptionsToSurveyOption(opts []ArgOption) []string {
+	sOpts := make([]string, len(opts))
+	for i, opt := range opts {
+		sOpts[i] = opt.Display
+	}
+	return sOpts
 }
 
 func divideArgs(args []string) ([]string, []string) {
@@ -45,6 +82,29 @@ func divideArgs(args []string) ([]string, []string) {
 	}
 
 	return args, nil
+}
+
+func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, error) {
+	s := ""
+	ans, ok := anserIface.(survey.OptionAnswer)
+
+	if !ok {
+		ans, ok := anserIface.([]survey.OptionAnswer)
+		if !ok {
+			return "", fmt.Errorf("cannot get type for option: %v\n", anserIface)
+		}
+
+		for i, val := range ans {
+			s += options[val.Index].Value
+			if i != len(ans)-1 {
+				s += ","
+			}
+		}
+	} else {
+		s = options[ans.Index].Value
+	}
+
+	return s, nil
 }
 
 func main() {
@@ -84,7 +144,7 @@ func main() {
 		case "multi-select":
 			p = &survey.MultiSelect{
 				Message: arg.Prompt.Message,
-				Options: arg.Options,
+				Options: argOptionsToSurveyOption(arg.Options),
 				Default: arg.Default,
 				Help:    arg.Help,
 			}
@@ -92,7 +152,7 @@ func main() {
 		case "select":
 			p = &survey.Select{
 				Message: arg.Prompt.Message,
-				Options: arg.Options,
+				Options: argOptionsToSurveyOption(arg.Options),
 				Default: arg.Default,
 				Help:    arg.Help,
 			}
@@ -142,22 +202,10 @@ func main() {
 					log.Fatalf("Cannot get type for %s: %v\n", key, val)
 				}
 			} else {
-				ans, ok := val.(survey.OptionAnswer)
-				if !ok {
-					ans, ok := val.([]survey.OptionAnswer)
-					if !ok {
-						flags.PrintDefaults()
-						log.Fatalf("Cannot get type for %s: %v\n", key, val)
-					}
-
-					for i, val := range ans {
-						s += val.Value
-						if i != len(ans)-1 {
-							s += ","
-						}
-					}
-				} else {
-					s = ans.Value
+				s, err = getValueFromAnswer(val, argsMap[key].Options)
+				if err != nil {
+					flags.PrintDefaults()
+					log.Fatalf("Failed to get value from answer %s: %v\n", key, err)
 				}
 			}
 		}
