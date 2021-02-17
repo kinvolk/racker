@@ -33,7 +33,7 @@ type Arg struct {
 	Help    string      `yaml:",omitempty"`
 }
 
-type InstallerConf struct {
+type ArgsWizardConf struct {
 	Args []Arg `yaml:",omitempty"`
 }
 
@@ -117,14 +117,14 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
-	t := InstallerConf{}
+	c := ArgsWizardConf{}
 
 	data, err := ioutil.ReadFile(*confFilePath)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
 
-	err = yaml.Unmarshal(data, &t)
+	err = yaml.Unmarshal(data, &c)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
@@ -136,7 +136,7 @@ func main() {
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
 
-	for _, arg := range t.Args {
+	for _, arg := range c.Args {
 		var p survey.Prompt
 
 		switch arg.Prompt.Type {
