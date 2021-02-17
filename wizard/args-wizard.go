@@ -34,8 +34,7 @@ type Arg struct {
 }
 
 type InstallerConf struct {
-	OutputFilename string `yaml:"output-file,omitempty"`
-	Args           []Arg  `yaml:",omitempty"`
+	Args []Arg `yaml:",omitempty"`
 }
 
 func (o *ArgOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
