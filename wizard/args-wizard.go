@@ -32,11 +32,16 @@ type ArgOption struct {
 	Value   string `yaml:",omitempty"`
 }
 
+type Flag struct {
+	Skip bool `yaml:",omitempty"`
+}
+
 type Arg struct {
 	Name    string      `yaml:",omitempty"`
 	Var     string      `yaml:",omitempty"`
 	Default string      `yaml:",omitempty"`
 	Prompt  Prompt      `yaml:",omitempty"`
+	Flag    Flag        `yaml:",omitempty"`
 	Options []ArgOption `yaml:",omitempty"`
 	Help    string      `yaml:",omitempty"`
 }
@@ -190,7 +195,6 @@ func main() {
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		case "select":
 			p = &survey.Select{
 				Message: arg.Prompt.Message,
@@ -198,13 +202,15 @@ func main() {
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
+		}
+
+		if !arg.Flag.Skip {
 			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		}
 
