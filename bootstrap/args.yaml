@@ -54,3 +54,12 @@ args:
     next:
     - if-value:
       prompt: ip-addrs
+    - if-value-not:
+      prompt: subnet-prefix
+- name: subnet-prefix
+  var: SUBNET_PREFIX
+  help: The subnet prefix is in the first three numbers of the decimal IP address format, so that .0/24 can be appended
+  default: 172.24.213
+  prompt:
+    message: Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network
+    type: input
