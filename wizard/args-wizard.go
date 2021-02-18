@@ -12,11 +12,19 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type NextPrompt struct {
+	Prompt         string  `yaml:",omitempty"`
+	ConditionValue *string `yaml:"if-value,omitempty"`
+	Negate         bool    `yaml:"not,omitempty"`
+}
+
 type Prompt struct {
-	Message string      `yaml:",omitempty"`
-	Type    string      `yaml:",omitempty"`
-	Help    string      `yaml:",omitempty"`
-	Default interface{} `yaml:",omitempty"`
+	Message string       `yaml:",omitempty"`
+	Type    string       `yaml:",omitempty"`
+	Help    string       `yaml:",omitempty"`
+	Default interface{}  `yaml:",omitempty"`
+	Skip    bool         `yaml:",omitempty"`
+	Next    []NextPrompt `yaml:",omitempty"`
 }
 
 type ArgOption struct {
@@ -24,13 +32,25 @@ type ArgOption struct {
 	Value   string `yaml:",omitempty"`
 }
 
+type Flag struct {
+	Skip bool   `yaml:",omitempty"`
+	Help string `yaml:",omitempty"`
+}
+
 type Arg struct {
 	Name    string      `yaml:",omitempty"`
 	Var     string      `yaml:",omitempty"`
 	Default string      `yaml:",omitempty"`
 	Prompt  Prompt      `yaml:",omitempty"`
+	Flag    Flag        `yaml:",omitempty"`
 	Options []ArgOption `yaml:",omitempty"`
 	Help    string      `yaml:",omitempty"`
+}
+
+type ArgQuestion struct {
+	Arg    Arg
+	Prompt *survey.Prompt
+	Next   *ArgQuestion
 }
 
 type ArgsWizardConf struct {
@@ -60,12 +80,39 @@ func (o *ArgOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (o *NextPrompt) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var m map[string]string
+	if err := unmarshal(&m); err != nil {
+		return err
+	}
+	o.Prompt = m["prompt"]
+	if cond, present := m["if-value"]; present {
+		o.ConditionValue = &cond
+		o.Negate = false
+	}
+	if cond, present := m["if-value-not"]; present {
+		o.ConditionValue = &cond
+		o.Negate = true
+	}
+
+	return nil
+}
+
 func argOptionsToSurveyOption(opts []ArgOption) []string {
 	sOpts := make([]string, len(opts))
 	for i, opt := range opts {
 		sOpts[i] = opt.Display
 	}
 	return sOpts
+}
+
+func getDefaultOptionValue(opts []ArgOption, defaultValue string) string {
+	for _, opt := range opts {
+		if opt.Value == defaultValue {
+			return opt.Display
+		}
+	}
+	return defaultValue
 }
 
 func divideArgs(args []string) ([]string, []string) {
@@ -129,88 +176,139 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
-	argsMap := make(map[string]Arg)
+	argsMap := make(map[string]*ArgQuestion)
 	answers := make(map[string]interface{})
-
-	questions := []*survey.Question{}
+	results := make(map[string]string)
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
 
+	var firstQuestion *ArgQuestion
+	var lastQuestion *ArgQuestion
+
 	for _, arg := range c.Args {
 		var p survey.Prompt
+
+		help := arg.Prompt.Help
+		if help == "" {
+			help = arg.Help
+		}
 
 		switch arg.Prompt.Type {
 		case "multi-select":
 			p = &survey.MultiSelect{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
-				Default: arg.Default,
-				Help:    arg.Help,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
+				Help:    help,
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		case "select":
 			p = &survey.Select{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
-				Default: arg.Default,
-				Help:    arg.Help,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
+				Help:    help,
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
-				Default: arg.Default,
-				Help:    arg.Help,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
+				Help:    help,
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		}
 
-		questions = append(questions, &survey.Question{
-			Name:   arg.Name,
-			Prompt: p,
-		})
+		if !arg.Flag.Skip {
+			help := arg.Flag.Help
+			if help == "" {
+				help = arg.Help
+			}
+			answers[arg.Name] = flags.String(arg.Name, arg.Default, help)
+		}
 
-		argsMap[arg.Name] = arg
+		a := ArgQuestion{arg, &p, nil}
+		if firstQuestion == nil {
+			firstQuestion = &a
+			lastQuestion = &a
+		} else if !a.Arg.Prompt.Skip {
+			lastQuestion.Next = &a
+			lastQuestion = &a
+		}
+
+		argsMap[arg.Name] = &a
 	}
 
-	usedFlags := false
 	if len(secondArgs) > 0 {
 		if err = flags.Parse(secondArgs); err != nil {
 			flags.PrintDefaults()
 			log.Fatal(err)
 		}
-		usedFlags = true
-	} else {
-		err = survey.Ask(questions, &answers, survey.WithStdio(os.Stdin, os.Stderr, os.Stderr))
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
-	}
 
-	results := ""
+		q := firstQuestion
+		for q != nil {
+			argName := q.Arg.Name
+			resultVar := q.Arg.Var
+			q = q.Next
 
-	for key, val := range answers {
-		s, ok := val.(string)
-		if !ok {
-			if usedFlags {
-				sPtr, ok := val.(*string)
-				if ok {
-					s = *sPtr
-				} else {
-					log.Fatalf("Cannot get type for %s: %v\n", key, val)
-				}
+			if resultVar == "" {
+				continue
+			}
+
+			ans := answers[argName]
+
+			s := ""
+			sPtr, ok := ans.(*string)
+			if ok {
+				s = *sPtr
 			} else {
-				s, err = getValueFromAnswer(val, argsMap[key].Options)
+				log.Fatalf("Cannot get type for %s: %v\n", argName, ans)
+			}
+
+			if s == "" && results[resultVar] != "" {
+				continue
+			}
+
+			results[argsMap[argName].Arg.Var] = s
+		}
+
+	} else {
+		arg := firstQuestion
+		for arg != nil {
+			q := survey.Question{
+				Name:   arg.Arg.Name,
+				Prompt: *arg.Prompt,
+			}
+			err = survey.Ask([]*survey.Question{&q}, &answers, survey.WithStdio(os.Stdin, os.Stderr, os.Stderr))
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			val := answers[arg.Arg.Name]
+			s, ok := val.(string)
+			if !ok {
+				s, err = getValueFromAnswer(val, arg.Arg.Options)
 				if err != nil {
-					flags.PrintDefaults()
-					log.Fatalf("Failed to get value from answer %s: %v\n", key, err)
+					log.Fatalf("Failed to get value for %s: %v \n", arg.Arg.Name, err)
 				}
 			}
-		}
 
-		results += fmt.Sprintf("%s=%s\n", argsMap[key].Var, s)
+			if arg.Arg.Var != "" {
+				results[arg.Arg.Var] = s
+			}
+
+			nextArg := arg.Next
+
+			for _, nextPrompt := range arg.Arg.Prompt.Next {
+				if nextPrompt.ConditionValue != nil && ((*nextPrompt.ConditionValue == s) != nextPrompt.Negate) {
+					nextArg = argsMap[nextPrompt.Prompt]
+					break
+				}
+			}
+
+			arg = nextArg
+		}
 	}
 
-	fmt.Print(results)
+	for key, value := range results {
+		fmt.Printf("%s=\"%s\"\n", key, value)
+	}
 }
