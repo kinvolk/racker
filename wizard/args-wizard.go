@@ -33,7 +33,8 @@ type ArgOption struct {
 }
 
 type Flag struct {
-	Skip bool `yaml:",omitempty"`
+	Skip bool   `yaml:",omitempty"`
+	Help string `yaml:",omitempty"`
 }
 
 type Arg struct {
@@ -187,31 +188,40 @@ func main() {
 	for _, arg := range c.Args {
 		var p survey.Prompt
 
+		help := arg.Prompt.Help
+		if help == "" {
+			help = arg.Help
+		}
+
 		switch arg.Prompt.Type {
 		case "multi-select":
 			p = &survey.MultiSelect{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
-				Help:    arg.Help,
+				Help:    help,
 			}
 		case "select":
 			p = &survey.Select{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
-				Help:    arg.Help,
+				Help:    help,
 			}
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
-				Help:    arg.Help,
+				Help:    help,
 			}
 		}
 
 		if !arg.Flag.Skip {
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
+			help := arg.Flag.Help
+			if help == "" {
+				help = arg.Help
+			}
+			answers[arg.Name] = flags.String(arg.Name, arg.Default, help)
 		}
 
 		a := ArgQuestion{arg, &p, nil}
