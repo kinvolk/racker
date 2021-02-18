@@ -27,7 +27,8 @@ args:
     type: select
 - name: ip-addrs
   var: PUBLIC_IP_ADDRS
-  help: Each node needs an IP address, this can be done using DHCP or through manual assignment
+  flag:
+    help: Set as "DHCP" for automatically assigning IP address, or provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
   default: DHCP
   options:
   - display: Use DHCP
@@ -36,6 +37,7 @@ args:
     value: manual
   prompt:
     message: Choose how you want to assign the IP addresses
+    help: Each node needs an IP address, this can be done using DHCP or through manual assignment
     type: select
     next:
     - if-value: manual
