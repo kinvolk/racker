@@ -33,7 +33,7 @@ pull_n_run_racker() {
 
 usage() {
   declare -A args=(
-    ["bootstrap ..."]="guided setup for Lokomotive Kubernetes"
+    ["bootstrap -- ..."]="guided setup for Lokomotive Kubernetes"
     ["update"]="install updates for the current racker version"
     ["upgrade"]="migrate to a newer racker version"
     ["get VERSION"]="install a particular racker version"
@@ -137,7 +137,10 @@ elif [ "$1" = bootstrap ]; then
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
   args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- ${@:2}
-
+  # Exit on -h
+  if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
+    exit 0
+  fi
   # Load the variables into context
   set -a
   . $ARGS_FILE
