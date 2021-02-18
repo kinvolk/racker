@@ -25,3 +25,30 @@ args:
   prompt:
     message: Choose a server type for the controller nodes
     type: select
+- name: ip-addrs
+  var: PUBLIC_IP_ADDRS
+  help: Each node needs an IP address, this can be done using DHCP or through manual assignment
+  default: DHCP
+  options:
+  - display: Use DHCP
+    value: DHCP
+  - display: Configure manually
+    value: manual
+  prompt:
+    message: Choose how you want to assign the IP addresses
+    type: select
+    next:
+    - if-value: manual
+      prompt: manual-ip-assignment
+- name: manual-ip-assignment
+  var: PUBLIC_IP_ADDRS
+  help: Provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS; leave empty to go back
+  flag:
+    skip: true
+  prompt:
+    skip: true
+    message: Write a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+    type: input
+    next:
+    - if-value:
+      prompt: ip-addrs
