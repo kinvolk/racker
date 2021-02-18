@@ -68,6 +68,15 @@ func argOptionsToSurveyOption(opts []ArgOption) []string {
 	return sOpts
 }
 
+func getDefaultOptionValue(opts []ArgOption, defaultValue string) string {
+	for _, opt := range opts {
+		if opt.Value == defaultValue {
+			return opt.Display
+		}
+	}
+	return defaultValue
+}
+
 func divideArgs(args []string) ([]string, []string) {
 	numArgs := len(args)
 	for i := 0; i < numArgs; i++ {
@@ -144,7 +153,7 @@ func main() {
 			p = &survey.MultiSelect{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
-				Default: arg.Default,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
 			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
@@ -152,14 +161,14 @@ func main() {
 			p = &survey.Select{
 				Message: arg.Prompt.Message,
 				Options: argOptionsToSurveyOption(arg.Options),
-				Default: arg.Default,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
 			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
-				Default: arg.Default,
+				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    arg.Help,
 			}
 			answers[arg.Name] = flags.String(arg.Name, arg.Default, arg.Help)
