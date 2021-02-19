@@ -30,7 +30,7 @@ else
 fi
 bmcipaddr=""
 # poweron must be the last because when the OS comes up it does its own IPMI setup and we also don't know when any step after poweron would be executed
-steps=(bootdev poweroff bootdev poweron)
+steps=(timeroff poweroff bootdev poweron)
 count=60
 while [ $count -gt 0 ]; do
   count=$((count - 1))
@@ -41,7 +41,12 @@ while [ $count -gt 0 ]; do
   if [ "$bmcipaddr" = "" ]; then
     continue
   fi
-  if [ "${steps[0]}" = poweroff ]; then
+  if [ "${steps[0]}" = timeroff ]; then
+    # Disable the 60 sec timeout that clears the boot flag valid bit
+    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} raw 0x0 0x8 0x3 0x1f || continue
+    steps=(${steps[*]:1})
+    continue
+  elif [ "${steps[0]}" = poweroff ]; then
     docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} power off || continue
     steps=(${steps[*]:1})
     continue
