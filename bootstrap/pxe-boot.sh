@@ -46,7 +46,9 @@ while [ $count -gt 0 ]; do
     steps=(${steps[*]:1})
     continue
   elif [ "${steps[0]}" = bootdev ]; then
-    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} chassis bootdev pxe options=persistent || continue
+    # normally this would be: chassis bootdev pxe options=persistent,efiboot
+    # but we have to resort to raw commands as long as the new ipmitool version is not released (only one flag out of persistent and efiboot works in 1.8.18)
+    docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H $bmcipaddr -U ${IPMI_USER} -P ${IPMI_PASSWORD} raw 0x00 0x08 0x05 0xe0 0x04 0x00 0x00 0x00 || continue
     steps=(${steps[*]:1})
     continue
   else
