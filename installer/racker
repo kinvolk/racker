@@ -95,18 +95,13 @@ elif [ "$1" = bootstrap ]; then
     pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
-  # actually run the setup wizard here
-  mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
-    echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-    echo "  cd lokomotive; lokoctl cluster|component apply"
-    echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
-    exit 1 ; }
-  cd ~/lokomotive
-
-  LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
-  if $LOCKSMITH_ENABLED; then
-    # Stop locksmith to prevent a possible reboot while bootstrapping
-    sudo systemctl stop locksmithd
+  if [ "$2" != "-h" ] && [ "$2" != "--help" ]; then
+    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
+      echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+      echo "  cd lokomotive; lokoctl cluster|component apply"
+      echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+      exit 1 ; }
+    cd ~/lokomotive
   fi
 
   # Find the list of available node types, excluding the management node
@@ -124,6 +119,12 @@ elif [ "$1" = bootstrap ]; then
   set -a
   . $ARGS_FILE
   set +a
+
+  LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
+  if $LOCKSMITH_ENABLED; then
+    # Stop locksmith to prevent a possible reboot while bootstrapping
+    sudo systemctl stop locksmithd
+  fi
 
   ret=0
   USE_QEMU=0 /opt/racker/bootstrap/prepare.sh create || ret=$?
