@@ -95,40 +95,14 @@ elif [ "$1" = bootstrap ]; then
     pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
-  # actually run the setup wizard here
-  mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
-    echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-    echo "  cd lokomotive; lokoctl cluster|component apply"
-    echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
-    exit 1 ; }
-  cd ~/lokomotive
-
-  LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
-  if $LOCKSMITH_ENABLED; then
-    # Stop locksmith to prevent a possible reboot while bootstrapping
-    sudo systemctl stop locksmithd
+  if [ "$2" != "-h" ] && [ "$2" != "--help" ]; then
+    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
+      echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+      echo "  cd lokomotive; lokoctl cluster|component apply"
+      echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+      exit 1 ; }
+    cd ~/lokomotive
   fi
-
-  # testing: use static IP addrs
-  # get sorted nodes without mgmt node
-  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
-  PUBLIC_IP_ADDRS=""
-  count=110
-  while IFS= read -r line
-  do
-    sec_mac=$(echo "$line" | cut -d , -f 3)
-    ip_addr="172.18.4.${count}"
-    PUBLIC_IP_ADDRS+=" ${sec_mac}-${ip_addr}/22-172.18.4.9-172.18.4.9"
-    let count+=1
-    if [ $count -eq 114 ] || [ $count -eq 115 ]; then
-      let count+=1
-    fi
-    if [ $count -eq 182 ]; then
-       exit 1
-    fi
-  done <<< "$NODES"
-  export PUBLIC_IP_ADDRS
-  #
 
   # Find the list of available node types, excluding the management node
   node_types_list=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 4 | sed 's/ //g' | sort | uniq)
@@ -136,7 +110,7 @@ elif [ "$1" = bootstrap ]; then
   node_types=$(echo -n "${node_types_list}" | sed 's/^/  - /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
-  args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- ${@:2}
+  args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
@@ -145,6 +119,12 @@ elif [ "$1" = bootstrap ]; then
   set -a
   . $ARGS_FILE
   set +a
+
+  LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
+  if $LOCKSMITH_ENABLED; then
+    # Stop locksmith to prevent a possible reboot while bootstrapping
+    sudo systemctl stop locksmithd
+  fi
 
   ret=0
   USE_QEMU=0 /opt/racker/bootstrap/prepare.sh create || ret=$?
