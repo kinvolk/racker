@@ -375,6 +375,7 @@ function gen_cluster_vars() {
   local controller_hosts=""
   local id=""
   local j=1
+  sudo sed -i "/${SUBNET_PREFIX}./d" /etc/hosts
   sudo sed -i "/.*controller.${CLUSTER_NAME}/d" /etc/hosts
   for mac in ${CONTROLLERS_MAC[*]}; do
     controller_hosts+="          $(calc_ip_addr $mac) controller.${CLUSTER_NAME} controller${j}.${CLUSTER_NAME}\n"
