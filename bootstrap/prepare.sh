@@ -482,6 +482,7 @@ EOF
 function error_guidance() {
   echo "If individual nodes did not come up, you can retry later with:"
   echo "  cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check --confirm --verbose"
+  echo "  ln -fs ${ASSET_DIR}/cluster-assets/auth/kubeconfig ~/.kube/config"
   echo
   echo "Once the above command is successful, running the racker bootstrap command is not needed anymore if you want to change something."
   echo "To modify the settings you can then directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
