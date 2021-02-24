@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "cancel"
+RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
@@ -477,6 +479,15 @@ EOF
   fi
 }
 
+function error_guidance() {
+  echo "If individual nodes did not come up, you can retry later with:"
+  echo "  cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check --confirm --verbose"
+  echo
+  echo "Once the above command is successful, running the racker bootstrap command is not needed anymore if you want to change something."
+  echo "To modify the settings you can then directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+  echo "  cd lokomotive; lokoctl cluster|component apply"
+}
+
 if [ "$1" = create ]; then
   create_network
   sudo rm -rf "/opt/racker-state/matchbox/groups/"*
@@ -488,7 +499,36 @@ if [ "$1" = create ]; then
 
   gen_cluster_vars
 
-  lokoctl cluster apply --verbose --skip-components || { echo "If individual nodes did not come up, try: cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check -v" ; exit 1; }
+  ret=0
+  tries=0
+  lokoctl cluster apply --verbose --skip-components || ret=$?
+  while [ "${ret}" != 0 ]; do
+    if [ "${ONFAILURE}" = retry ]; then
+      CHOICE=r
+      if [ "${tries}" = "${RETRIES}" ]; then
+        echo "Error after ${tries} retries"
+        error_guidance
+        exit ${ret}
+      fi
+      let tries+=1
+      echo "Something went wrong, retrying ${tries}/${RETRIES}"
+    elif [ "${ONFAILURE}" = cancel ]; then
+      CHOICE=c
+    else
+      read -p "[r]etry/[c]ancel (default retry): " CHOICE
+    fi
+    if [ "${CHOICE}" = "" ] || [ "${CHOICE}" = "r" ]; then
+      ret=0
+      lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm || ret=$?
+    elif [ "${CHOICE}" = "c" ]; then
+      echo "Canceling"
+      error_guidance
+      exit ${ret}
+    else
+      ret=1
+      continue
+    fi
+  done
   lokoctl component apply
   if [ -z "$USE_QEMU" ]; then
     echo "Setting up ~/.kube/config symlink for kubectl"
