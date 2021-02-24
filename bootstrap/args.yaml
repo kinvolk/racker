@@ -65,3 +65,112 @@ args:
   prompt:
     message: Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network
     type: input
+- name: config-backup
+  var: USE_VELERO
+  flag:
+    skip: true
+  help: You will be allowed to set up a backup to S3
+  default: false
+  prompt:
+    message: Do you want to set up backup/restore?
+    type: confirm
+    next:
+    - if-value: true
+      prompt: aws-access-key
+- name: aws-access-key
+  var: BACKUP_AWS_ACCESS_KEY
+  help: Provide your AWS access key; leave empty to go back
+  prompt:
+    skip: true
+    message: Enter your AWS access key
+    type: input
+    next:
+    - if-value-not:
+      prompt: aws-secret-key
+    - if-value:
+      prompt: config-backup
+- name: aws-secret-key
+  var: BACKUP_AWS_SECRET_ACCESS_KEY
+  help: Provide your AWS secret key; leave empty to go back
+  prompt:
+    skip: true
+    message: Enter your AWS secret key
+    type: input
+    next:
+    - if-value-not:
+      prompt: backup-name
+    - if-value:
+      prompt: config-backup
+- name: backup-name
+  var: BACKUP_NAME
+  help: Provide the name for the backup.
+  default: lokomotive-backup
+  prompt:
+    skip: true
+    message: Enter the backup name
+    type: input
+    next:
+    - if-value:
+      prompt: config-backup
+    - if-value-not:
+      prompt: backup-s3-bucket
+- name: backup-s3-bucket
+  var: BACKUP_S3_BUCKET_NAME
+  help: Provide the name of the S3 bucket you want the back up to be stored at.
+  default: lokomotive-backup
+  prompt:
+    skip: true
+    message: Enter the S3 bucket name
+    type: input
+    next:
+    - if-value:
+      prompt: config-backup
+    - if-value-not:
+      prompt: backup-aws-location
+- name: backup-aws-location
+  var: BACKUP_AWS_REGION
+  help: Provide the region of the S3 bucket you want the back up to be stored at.
+  default: us-east-2
+  options:
+  - display: Other
+    value: _input
+  - us-east-2
+  - us-east-1
+  - us-west-1
+  - us-west-2
+  - eu-central-1
+  - eu-west-1
+  - eu-west-2
+  - eu-south-1
+  - eu-west-3
+  - eu-north-1
+  - me-south-1
+  - sa-east-1
+  - af-south-1
+  - ap-east-1
+  - ap-south-1
+  - ap-northeast-1
+  - ap-northeast-2
+  - ap-northeast-3
+  - ap-southeast-1
+  - ap-southeast-2
+  - ca-central-1
+  prompt:
+    skip: true
+    message: Enter the S3 bucket location
+    type: select
+    next:
+    - if-value: _input
+      prompt: _backup-aws-location
+- name: _backup-aws-location
+  var: BACKUP_AWS_REGION
+  help: Provide the region of the S3 bucket you want the back up to be stored at.
+  flag:
+    skip: true
+  prompt:
+    skip: true
+    message: Enter the S3 bucket region / zone
+    type: input
+    next:
+    - if-value:
+      prompt: backup-s3-bucket-location

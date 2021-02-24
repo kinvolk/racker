@@ -1,0 +1,27 @@
+component "velero" {
+  namespace = "velero"
+  provider  = "restic"
+
+  restic {
+    credentials               = file("./backup-credentials")
+
+    backup_storage_location {
+      name     = var.backup_name
+      provider = "aws"
+      bucket   = var.backup_s3_bucket_name
+      region   = var.backup_aws_region
+    }
+  }
+}
+
+variable "backup_name" {
+  type = "string"
+}
+
+variable "backup_s3_bucket_name" {
+  type = "string"
+}
+
+variable "backup_aws_region" {
+  type = "string"
+}
