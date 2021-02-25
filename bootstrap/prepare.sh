@@ -56,6 +56,7 @@ if [ -n "$USE_QEMU" ]; then
   CONTROLLERS_MAC=($(cat controller_macs))
   MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
   FULL_MAC_ADDRESS_LIST=($(cat controller_macs worker_macs))
+  FULL_BMC_MAC_ADDRESS_LIST=()
   PXE_INTERFACE="pxe0"
 else
   ls /usr/share/oem/nodes.csv > /dev/null || { echo "The rack metadata file in /usr/share/oem/nodes.csv is missing" ; exit 1 ; }
@@ -114,7 +115,7 @@ function calc_ip_addr() {
   local node_mac="$1"
   local node_nr=2
 
-  for mac in ${FULL_MAC_ADDRESS_LIST[*]}; do
+  for mac in ${FULL_MAC_ADDRESS_LIST[*]} ${FULL_BMC_MAC_ADDRESS_LIST[*]}; do
     if [ "$mac" = "$node_mac" ]; then
       break
     fi
@@ -255,6 +256,18 @@ function prepare_dnsmasq_conf() {
     -e "s/{{BRIDGE_NAME}}/${PXE_INTERFACE}/g" \
     -e "s/{{MATCHBOX}}/$(get_matchbox_ip_addr)/g" \
     < "$SCRIPTFOLDER/dnsmasq.conf.template" > "/opt/racker-state/dnsmasq/dnsmasq.conf"
+  local ip_address=""
+  local bmc_mac=""
+  local bmc_ip_address=""
+  for mac in ${MAC_ADDRESS_LIST[*]}; do
+    ip_address="$(calc_ip_addr ${mac})"
+    echo "dhcp-host=${mac},${ip_address},infinite" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
+    if [ -z "$USE_QEMU" ]; then
+      bmc_mac=$(grep -m 1 "${mac}" /usr/share/oem/nodes.csv | cut -d , -f 2 | sed 's/ //g')
+      bmc_ip_address="$(calc_ip_addr ${bmc_mac})"
+      echo "dhcp-host=${bmc_mac},${bmc_ip_address},infinite" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
+    fi
+  done
 }
 
 # regular DHCP on the external bridge (as libvirt would do)
@@ -362,6 +375,7 @@ function gen_cluster_vars() {
   local controller_hosts=""
   local id=""
   local j=1
+  sudo sed -i "/${SUBNET_PREFIX}./d" /etc/hosts
   sudo sed -i "/.*controller.${CLUSTER_NAME}/d" /etc/hosts
   for mac in ${CONTROLLERS_MAC[*]}; do
     controller_hosts+="          $(calc_ip_addr $mac) controller.${CLUSTER_NAME} controller${j}.${CLUSTER_NAME}\n"
