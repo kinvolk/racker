@@ -232,6 +232,7 @@ func main() {
 				Help:          help,
 				Default:       arg.Default,
 				AppendDefault: true,
+				HideDefault:   true,
 			}
 		default:
 			p = &survey.Input{

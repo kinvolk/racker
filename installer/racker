@@ -122,7 +122,9 @@ elif [ "$1" = bootstrap ]; then
   node_types=$(echo -n "${node_types_list}" | sed 's/^/  - /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
-  args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
+  EDITOR_TMP=/tmp/racker
+  mkdir -p $EDITOR_TMP
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0

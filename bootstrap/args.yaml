@@ -44,13 +44,13 @@ args:
       prompt: manual-ip-assignment
 - name: manual-ip-assignment
   var: PUBLIC_IP_ADDRS
-  help: Provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS; leave empty to go back
+  help: An editor will open with instructions on how to configure the IP addresses
   flag:
     skip: true
   prompt:
     skip: true
     message: Write a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
-    type: input
+    type: editor
     next:
     - if-value:
       prompt: ip-addrs
