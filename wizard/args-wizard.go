@@ -226,10 +226,17 @@ func main() {
 				Message: arg.Prompt.Message,
 				Help:    help,
 			}
+		case "editor":
+			p = &survey.Editor{
+				Message:       arg.Prompt.Message,
+				Help:          help,
+				Default:       arg.Default,
+				AppendDefault: true,
+			}
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
-				Default: getDefaultOptionValue(arg.Options, arg.Default),
+				Default: arg.Default,
 				Help:    help,
 			}
 		}
