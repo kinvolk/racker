@@ -39,6 +39,8 @@ usage() {
     ["get VERSION"]="install a particular racker version"
     ["factory"]="preparation procedure to configure the hardware"
     ["version"]="print racker version"
+    ["--onfailure=(ask|retry|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
+    ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
     ["-h/--help"]="show usage"
   )
 
@@ -51,13 +53,23 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o h -l help -- "$@")
+ARGS=$(getopt -n "$0" -o ho:r: -l help,onfailure:,retries: -- "$@")
 eval set -- "$ARGS"
 
 while true; do
   case "${1:-}" in
     -h|--help)
       usage
+      ;;
+    --onfailure)
+      shift
+      export ONFAILURE=$1
+      shift
+      ;;
+    --retries)
+      shift
+      export RETRIES=$1
+      shift
       ;;
     --)
       shift
@@ -95,7 +107,7 @@ elif [ "$1" = bootstrap ]; then
     pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
-  if [ "$2" != "-h" ] && [ "$2" != "--help" ]; then
+  if [ $# -lt 2 ] || { [ "$2" != "-h" ] && [ "$2" != "--help" ]; }; then
     mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
       echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
       echo "  cd lokomotive; lokoctl cluster|component apply"
