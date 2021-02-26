@@ -7,7 +7,11 @@ RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
-PUBLIC_IP_ADDRS=(${PUBLIC_IP_ADDRS:-"DHCP"}) # otherwise a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+PUBLIC_IP_ADDRS="${PUBLIC_IP_ADDRS:-"DHCP"}" # "DHCP" or otherwise an INI-like format with "[SECONDARY_MAC_ADDR]" sections and "ip_addr = IP_V4_ADDR/SUBNETSIZE", "gateway = GATEWAY_ADDR", "dns = DNS_ADDR" entries
+if [ "${PUBLIC_IP_ADDRS}" = "DHCP" ]; then
+  # use an empty INI config for no custom IP address configurations
+  PUBLIC_IP_ADDRS=""
+fi
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
 CONTROLLER_TYPE=${CONTROLLER_TYPE:-"any"}
 if [ "${CONTROLLER_TYPE}" = "any" ]; then
@@ -47,6 +51,30 @@ function cancel() {
   exit 1
 }
 trap cancel INT
+
+function get_ini() {
+  local mac_addr="$1"
+  local key="$2"
+  # get value of "key = val" line after "[mac_addr]" header, and filter out any spaces
+  sed -nr "/^\[${mac_addr}\]/ { :l /^${key}[ ]*=/ { s/.*=[ ]*//; p; q;}; n; b l;}" | sed 's/ //g'
+}
+
+PUBLIC_IP_ADDRS_LIST=() # list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS strings
+secondary_macs=$(echo "${PUBLIC_IP_ADDRS}" | { grep -o '^\[.*\]' || true ; } | tr -d '[]')
+if [ "${secondary_macs}" != "" ]; then
+  for secondary_mac in ${secondary_macs}; do
+    ipv4_addr_and_subnet=$(echo "${PUBLIC_IP_ADDRS}" | get_ini ${secondary_mac} ip_addr)
+    if [ "${ipv4_addr_and_subnet}" != "" ]; then
+      gateway=${gateway:-"$(echo "${PUBLIC_IP_ADDRS}" | get_ini ${secondary_mac} gateway)"}
+      dns=${dns:-"$(echo "${PUBLIC_IP_ADDRS}" | get_ini ${secondary_mac} dns)"}
+      if [ "${gateway}" = "" ] || [ "${dns}" = "" ]; then
+        echo "both the gatway and dns settings are required when an IP address on the public interface is configured"
+        exit 1
+      fi
+      PUBLIC_IP_ADDRS_LIST+=("${secondary_mac}-${ipv4_addr_and_subnet}-${gateway}-${dns}")
+    fi
+  done
+fi
 
 if [ -n "$USE_QEMU" ]; then
   ls controller_macs worker_macs > /dev/null || { echo "Add at least one MAC address for each file controller_macs and worker_macs" ; exit 1 ; }
@@ -399,10 +427,9 @@ function gen_cluster_vars() {
     mkdir -p cl
     clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\", \"cl/${id}-custom.yaml\"]"$'\n'
     sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "cl/${id}.yaml"
-    # PUBLIC_IP_ADDRS=(${PUBLIC_IP_ADDRS:-"DHCP"}) # otherwise a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
-    if [ "${PUBLIC_IP_ADDRS[0]}" != "DHCP" ]; then
+    if [ "${#PUBLIC_IP_ADDRS_LIST[*]}" != "0" ]; then
       installer_clc_snippets+="\"${id}\" = [\"cl/${id}-custom.yaml\"]"$'\n'
-      for entry in ${PUBLIC_IP_ADDRS[*]}; do
+      for entry in ${PUBLIC_IP_ADDRS_LIST[*]}; do
         unpacked=($(echo $entry | tr - ' '))
         secondary_mac="${unpacked[0]}"
         ipv4_addr_and_subnet="${unpacked[1]}"
