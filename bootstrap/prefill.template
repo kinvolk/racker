@@ -1,0 +1,15 @@
+# Here you can configure IP addresses for the NICs on the public
+# network. Each entry is identified by the MAC address and if you don't
+# enter an IP address, this entry will be ignored, including any DNS
+# and gateway settings. For ignored entries DHCP is used.
+# The first entry with an IP address also needs the gateway and DNS to
+# be configured. Any following entries will reuse the same gateway and
+# DNS unless they overwrite it (at which point these will be the ones
+# reused in following entries).
+# Lines like this which start with a hash are ignored at any place,
+# but comments cannot be appended to the end of an entry line.
+# To cancel configuring IP addresses, leave the editor if you did not
+# make changes, and otherwise remove the changes or delete all content.
+# The format for an IP address is a.b.c.d/subnet, e.g., 60.50.40.31/24
+# and the DNS and gateway settings only accept a single IP address and
+# cannot be specified multiple times.

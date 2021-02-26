@@ -47,6 +47,8 @@ args:
   help: An editor will open with instructions on how to configure the IP addresses
   flag:
     skip: true
+  default: |
+    ${prefill}
   prompt:
     skip: true
     message: Write a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
