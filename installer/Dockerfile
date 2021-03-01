@@ -4,7 +4,7 @@ FROM $BASE_IMAGE as racker-build
 ARG RACKER_VERSION=
 
 RUN apt-get update
-RUN apt-get -y install arp-scan ipmitool
+RUN apt-get -y install arp-scan ipmitool nano
 
 ARG RACKER_TARBALL=racker.tar.gz
 ENV RACKER_TARBALL=$RACKER_TARBALL

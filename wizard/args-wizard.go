@@ -131,7 +131,20 @@ func divideArgs(args []string) ([]string, []string) {
 }
 
 func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, error) {
-	s := ""
+	s, ok := anserIface.(string)
+	if ok {
+		return s, nil
+	}
+
+	b, ok := anserIface.(bool)
+	if ok {
+		if b {
+			return "true", nil
+		}
+		return "false", nil
+	}
+
+	s = ""
 	ans, ok := anserIface.(survey.OptionAnswer)
 
 	if !ok {
@@ -208,10 +221,23 @@ func main() {
 				Default: getDefaultOptionValue(arg.Options, arg.Default),
 				Help:    help,
 			}
+		case "confirm":
+			p = &survey.Confirm{
+				Message: arg.Prompt.Message,
+				Help:    help,
+			}
+		case "editor":
+			p = &survey.Editor{
+				Message:       arg.Prompt.Message,
+				Help:          help,
+				Default:       arg.Default,
+				AppendDefault: true,
+				HideDefault:   true,
+			}
 		default:
 			p = &survey.Input{
 				Message: arg.Prompt.Message,
-				Default: getDefaultOptionValue(arg.Options, arg.Default),
+				Default: arg.Default,
 				Help:    help,
 			}
 		}
@@ -283,12 +309,9 @@ func main() {
 			}
 
 			val := answers[arg.Arg.Name]
-			s, ok := val.(string)
-			if !ok {
-				s, err = getValueFromAnswer(val, arg.Arg.Options)
-				if err != nil {
-					log.Fatalf("Failed to get value for %s: %v \n", arg.Arg.Name, err)
-				}
+			s, err := getValueFromAnswer(val, arg.Arg.Options)
+			if err != nil {
+				log.Fatalf("Failed to get value for %s: %v \n", arg.Arg.Name, err)
 			}
 
 			if arg.Arg.Var != "" {

@@ -28,7 +28,7 @@ args:
 - name: ip-addrs
   var: PUBLIC_IP_ADDRS
   flag:
-    help: Set as "DHCP" for automatically assigning IP address, or provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+    help: Set as "DHCP" for automatically assigning IP address, or provide the configuration of each node in the INI format (read the docs at @todo)
   default: DHCP
   options:
   - display: Use DHCP
@@ -44,13 +44,15 @@ args:
       prompt: manual-ip-assignment
 - name: manual-ip-assignment
   var: PUBLIC_IP_ADDRS
-  help: Provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS; leave empty to go back
+  help: Each node needs an IP address, this can be done using DHCP or through manual assignment, not configuring an address means using DHCP for this node
   flag:
     skip: true
+  default: |
+    ${prefill}
   prompt:
     skip: true
-    message: Write a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
-    type: input
+    message: An editor will open with instructions on how to configure the IP addresses
+    type: editor
     next:
     - if-value:
       prompt: ip-addrs

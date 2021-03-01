@@ -120,9 +120,14 @@ elif [ "$1" = bootstrap ]; then
   node_types_list=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 4 | sed 's/ //g' | sort | uniq)
   # Format it as YAML entries, adding a "  - " prefix, and, for sed, a "\n" string as newline directive (but only between the elements)
   node_types=$(echo -n "${node_types_list}" | sed 's/^/  - /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
+  sec_mac_addrs=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 3 | sed 's/ //g')
+  prefill_unquoted=$(cat /opt/racker/bootstrap/prefill.template; for mac in $sec_mac_addrs; do printf "[$mac]\nip_addr =\ngateway =\ndns =\n\n" ; done)
+  prefill=$(echo -n "${prefill_unquoted}" | sed 's/^/    /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
-  args-wizard -config <(sed 's/  - ${node_types}'"/${node_types}/g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
+  EDITOR_TMP=/tmp/racker
+  mkdir -p $EDITOR_TMP
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
