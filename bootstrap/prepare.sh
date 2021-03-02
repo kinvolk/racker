@@ -14,6 +14,7 @@ if [ "${PUBLIC_IP_ADDRS}" = "DHCP" ]; then
 fi
 CONTROLLER_AMOUNT=${CONTROLLER_AMOUNT:-"1"}
 CONTROLLER_TYPE=${CONTROLLER_TYPE:-"any"}
+KUBERNETES_DOMAIN_NAME=${KUBERNETES_DOMAIN_NAME:-"k8s.localdomain"}
 if [ "${CONTROLLER_TYPE}" = "any" ]; then
   # use the empty string to match all entries in the node type column of the nodes.csv file
   CONTROLLER_TYPE=""
@@ -358,22 +359,22 @@ EOF
 function destroy_nodes() {
   if [ -n "$USE_QEMU" ]; then
   echo "Destroying nodes..."
-  for count in $(seq 1 $CONTROLLER_AMOUNT); do
-    sudo virsh destroy "controller${count}.${CLUSTER_NAME}" || true
-    sudo virsh undefine "controller${count}.${CLUSTER_NAME}" || true
+  for ((count=0; count<$CONTROLLER_AMOUNT; count++)); do
+    sudo virsh destroy "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}" || true
+    sudo virsh undefine   "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}" || true
   done
-  for count in $(seq 1 $WORKER_AMOUNT); do
-    sudo virsh destroy "worker${count}.${CLUSTER_NAME}" || true
-    sudo virsh undefine "worker${count}.${CLUSTER_NAME}" || true
+  for ((count=0; count<$WORKER_AMOUNT; count++)); do
+    sudo virsh destroy "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}" || true
+    sudo virsh undefine "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}" || true
   done
 
   sudo virsh pool-refresh default
 
-  for count in $(seq 1 $CONTROLLER_AMOUNT); do
-    sudo virsh vol-delete --pool default "controller${count}.${CLUSTER_NAME}.qcow2" || true
+  for ((count=0; count<$CONTROLLER_AMOUNT; count++)); do
+    sudo virsh vol-delete --pool default "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2" || true
   done
-  for count in $(seq 1 $WORKER_AMOUNT); do
-    sudo virsh vol-delete --pool default "worker${count}.${CLUSTER_NAME}.qcow2" || true
+  for ((count=0; count<$WORKER_AMOUNT; count++)); do
+    sudo virsh vol-delete --pool default "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2" || true
   done
   fi
 }
@@ -393,7 +394,7 @@ function add_to_etc_hosts() {
 }
 
 function gen_cluster_vars() {
-  local count=1
+  local count=0
   local name="controller"
   local controller_macs="["
   local worker_macs="["
@@ -404,18 +405,19 @@ function gen_cluster_vars() {
   local ip_address=""
   local controller_hosts=""
   local id=""
-  local j=1
+  local j=0
   sudo sed -i "/${SUBNET_PREFIX}./d" /etc/hosts
-  sudo sed -i "/.*controller.${CLUSTER_NAME}/d" /etc/hosts
+  sudo sed -i "/${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
   for mac in ${CONTROLLERS_MAC[*]}; do
-    controller_hosts+="          $(calc_ip_addr $mac) controller.${CLUSTER_NAME} controller${j}.${CLUSTER_NAME}\n"
+    sudo sed -i "/${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
+    controller_hosts+="          $(calc_ip_addr $mac) ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-controller-${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}\n"
     # special case not covered by add_to_etc_hosts function
-    echo "$(calc_ip_addr $mac)" "controller.${CLUSTER_NAME}" | sudo tee -a /etc/hosts
+    echo "$(calc_ip_addr $mac)" "${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}" | sudo tee -a /etc/hosts
     let j+=1
   done
   for mac in ${MAC_ADDRESS_LIST[*]}; do
     ip_address="$(calc_ip_addr $mac)"
-    id="${name}${count}.${CLUSTER_NAME}"
+    id="${CLUSTER_NAME}-${name}-${count}.${KUBERNETES_DOMAIN_NAME}"
     add_to_etc_hosts "${ip_address}" "${id}"
     if [ "$name" = "controller" ]; then
       controller_macs+="\"${mac}\", "
@@ -458,11 +460,11 @@ EOF
     else
       echo > "cl/${id}-custom.yaml"
     fi
+    let count+=1
     if [ "$name" = "controller" ] && [ "$count" = "${CONTROLLER_AMOUNT}" ]; then
       count=0
       name="worker"
     fi
-    let count+=1
   done
   controller_macs+="]"
   worker_macs+="]"
@@ -477,6 +479,7 @@ EOF
   tee lokocfg.vars <<-EOF
 	cluster_name = "${CLUSTER_NAME}"
 	asset_dir = "${ASSET_DIR}"
+	k8s_domain_name = "${KUBERNETES_DOMAIN_NAME}"
 	controller_macs = ${controller_macs}
 	worker_macs = ${worker_macs}
 	controller_names = ${controller_names}

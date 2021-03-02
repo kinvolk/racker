@@ -36,5 +36,7 @@ storage:
       mode: 0644
       contents:
         inline: |
+          127.0.0.1 localhost
+          ::1 localhost
           # Requires systemd-resolved used for kubectl/kubelet for returning all IP addresses in order to gain HA for the API server
 {{HOSTS}}

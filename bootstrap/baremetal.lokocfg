@@ -8,7 +8,7 @@ cluster "bare-metal" {
   matchbox_endpoint         = "${var.matchbox_addr}:8081"
   matchbox_http_endpoint    = "http://${var.matchbox_addr}:8080"
   cluster_name              = var.cluster_name
-  k8s_domain_name           = "controller.${var.cluster_name}"
+  k8s_domain_name           = var.k8s_domain_name
   controller_domains = var.controller_names
   controller_macs = var.controller_macs
   controller_names = var.controller_names
@@ -86,4 +86,8 @@ variable "kernel_console" {
 
 variable "install_pre_reboot_cmds" {
   type = "string"
+}
+
+variable "k8s_domain_name" {
+  type = string
 }
