@@ -1,0 +1,39 @@
+args:
+- name: ip-addrs
+  var: PUBLIC_IP_ADDRS
+  flag:
+    help: Set as "DHCP" for automatically assigning IP address, or provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+  default: DHCP
+  options:
+  - display: Use DHCP
+    value: DHCP
+  - display: Configure manually
+    value: manual
+  prompt:
+    message: Choose how you want to assign the IP addresses
+    help: Each node needs an IP address, this can be done using DHCP or through manual assignment
+    type: select
+    next:
+    - if-value: manual
+      prompt: manual-ip-assignment
+- name: manual-ip-assignment
+  var: PUBLIC_IP_ADDRS
+  help: Provide a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS; leave empty to go back
+  flag:
+    skip: true
+  prompt:
+    skip: true
+    message: Write a space separated list of SECONDARY_MAC_ADDR-IP_V4_ADDR/SUBNETSIZE-GATEWAY-DNS
+    type: input
+    next:
+    - if-value:
+      prompt: ip-addrs
+    - if-value-not:
+      prompt: subnet-prefix
+- name: subnet-prefix
+  var: SUBNET_PREFIX
+  help: The subnet prefix is in the first three numbers of the decimal IP address format, so that .0/24 can be appended
+  default: 172.24.213
+  prompt:
+    message: Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network
+    type: input

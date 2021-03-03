@@ -127,7 +127,7 @@ elif [ "$1" = bootstrap ]; then
   ARGS_FILE="$(mktemp)"
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${@:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
@@ -137,12 +137,33 @@ elif [ "$1" = bootstrap ]; then
   . $ARGS_FILE
   set +a
 
+  if [ "$PROVISION_TYPE" == "Lokomotive" ]; then
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
+    # Exit on -h
+    if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
+      exit 0
+    fi
+    # Load the variables into context
+    set -a
+    . $ARGS_FILE
+    set +a
+  elif [ "$PROVISION_TYPE" == "Flatcar" ]; then
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/flatcar/flatcar-args.yaml) > $ARGS_FILE -- "${@:2}"
+    # Exit on -h
+    if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
+      exit 0
+    fi
+    # Load the variables into context
+    set -a
+    . $ARGS_FILE
+    set +a
+  fi
+
   LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
   if $LOCKSMITH_ENABLED; then
     # Stop locksmith to prevent a possible reboot while bootstrapping
     sudo systemctl stop locksmithd
   fi
-
   ret=0
   USE_QEMU=0 /opt/racker/bootstrap/prepare.sh create || ret=$?
 
