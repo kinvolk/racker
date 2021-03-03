@@ -2,11 +2,14 @@
 
 set -euo pipefail
 
+PROVISION_TYPE=${PROVISION_TYPE:-"Lokomotive"}
 ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "cancel"
 RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
+FLATCAR_DIR="$PWD/flatcar"
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
+FLATCAR_ASSETS_DIR="${FLATCAR_DIR}/assets"
 PUBLIC_IP_ADDRS="${PUBLIC_IP_ADDRS:-"DHCP"}" # "DHCP" or otherwise an INI-like format with "[SECONDARY_MAC_ADDR]" sections and "ip_addr = IP_V4_ADDR/SUBNETSIZE", "gateway = GATEWAY_ADDR", "dns = DNS_ADDR" entries
 if [ "${PUBLIC_IP_ADDRS}" = "DHCP" ]; then
   # use an empty INI config for no custom IP address configurations
@@ -361,31 +364,60 @@ EOF
   fi
 }
 
+function destroy_node() {
+  node_to_destroy=$1
+  sudo virsh destroy ${node_to_destroy} || true
+  sudo virsh undefine ${node_to_destroy} || true
+}
+
+function delete_storage() {
+  node_storage_to_delete=$1
+  sudo virsh vol-delete --pool default  ${node_storage_to_delete} || true
+}
+
+function destroy_flatcar_nodes() {
+  if [ -n "$USE_QEMU" ]; then
+    echo "Destroying nodes..."
+    for ((count=0; count<$((${#MAC_ADDRESS_LIST[*]})); count++)); do
+      destroy_node "node-${count}"
+    done
+
+    sudo virsh pool-refresh default
+
+    for ((count=0; count<$((${#MAC_ADDRESS_LIST[*]})); count++)); do
+      delete_storage "node-${count}.qcow2"
+    done
+  fi
+}
+
 function destroy_nodes() {
   if [ -n "$USE_QEMU" ]; then
   echo "Destroying nodes..."
   for ((count=0; count<$CONTROLLER_AMOUNT; count++)); do
-    sudo virsh destroy "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}" || true
-    sudo virsh undefine   "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}" || true
+    destroy_node "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}"
   done
   for ((count=0; count<$WORKER_AMOUNT; count++)); do
-    sudo virsh destroy "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}" || true
-    sudo virsh undefine "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}" || true
+    destroy_node "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}"
   done
 
   sudo virsh pool-refresh default
 
   for ((count=0; count<$CONTROLLER_AMOUNT; count++)); do
-    sudo virsh vol-delete --pool default "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2" || true
+    delete_storage "${CLUSTER_NAME}-controller-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2"
   done
   for ((count=0; count<$WORKER_AMOUNT; count++)); do
-    sudo virsh vol-delete --pool default "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2" || true
+    delete_storage "${CLUSTER_NAME}-worker-${count}.${KUBERNETES_DOMAIN_NAME}.qcow2"
   done
   fi
 }
 
 function destroy_all() {
-  destroy_nodes
+  if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+    destroy_nodes
+  else
+    destroy_flatcar_nodes
+  fi
+
   destroy_containers
   destroy_network
 }
@@ -409,6 +441,91 @@ function copy_script() {
   local script_name="$1"
   if ! cmp --silent "$SCRIPTFOLDER/$script_name" $script_name; then
     cp "$SCRIPTFOLDER/$script_name" ./
+  fi
+}
+
+function gen_flatcar_vars() {
+  local count=0
+  local node_macs="["
+  local node_names="["
+  local clc_snippets="{"$'\n'
+  local installer_clc_snippets="{"$'\n'
+  local ip_Address=""
+  local snippets_dir="${FLATCAR_ASSETS_DIR}/cl"
+
+  for mac in ${MAC_ADDRESS_LIST[*]}; do
+    ip_address="$(calc_ip_addr $mac)"
+    id="node-"${count}
+    add_to_etc_hosts "${ip_address}" "${id}"
+    node_macs+="\"${mac}\", "
+    node_names+="\"${id}\", "
+
+    mkdir -p ${snippets_dir}
+    clc_snippets+="\"${id}\" = [\"${snippets_dir}/${id}.yaml\", \"${snippets_dir}/${id}-custom.yaml\"]"$'\n'
+    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}//g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "${snippets_dir}/${id}.yaml"
+    if [ "${#PUBLIC_IP_ADDRS_LIST[*]}" != "0" ]; then
+      installer_clc_snippets+="\"${id}\" = [\"${snippets_dir}/${id}-custom.yaml\"]"$'\n'
+      for entry in ${PUBLIC_IP_ADDRS_LIST[*]}; do
+        unpacked=($(echo $entry | tr - ' '))
+        secondary_mac="${unpacked[0]}"
+        ipv4_addr_and_subnet="${unpacked[1]}"
+        gateway="${unpacked[2]}"
+        dns="${unpacked[3]}"
+        if [ "$(grep ${mac} /usr/share/oem/nodes.csv | grep ${secondary_mac})" != "" ]; then
+          tee -a "${snippets_dir}/${id}-custom.yaml" <<-EOF
+	networkd:
+	  units:
+	    - name: 10-public-stable.network
+	      contents: |
+	        [Match]
+	        MACAddress=${secondary_mac}
+	        [Address]
+	        Address=${ipv4_addr_and_subnet}
+	        [Network]
+	        DHCP=no
+	        LinkLocalAddressing=no
+	        DNS=${dns}
+	        [Route]
+	        Destination=0.0.0.0/0
+	        Gateway=${gateway}
+EOF
+        fi
+      done
+    else
+      echo > "${snippets_dir}/${id}-custom.yaml"
+    fi
+    let count+=1
+  done
+  node_macs+="]"
+  node_names+="]"
+  clc_snippets+=$'\n'"}"
+  installer_clc_snippets+=$'\n'"}"
+  # We escape $var as \$var for the bash heredoc to preserve it as Terraform string, use ${VAR} for the bash heredoc substitution.
+  # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
+  # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
+  # which would be a Terraform variable).
+  tee flatcar/terraform.tfvars <<-EOF
+	asset_dir = "${FLATCAR_ASSETS_DIR}"
+	node_macs = ${node_macs}
+	node_names = ${node_names}
+	matchbox_addr = "$(get_matchbox_ip_addr)"
+	clc_snippets = ${clc_snippets}
+	installer_clc_snippets = ${installer_clc_snippets}
+EOF
+  if [ -n "$USE_QEMU" ]; then
+    tee -a flatcar/terraform.tfvars <<-EOF
+	kernel_console = []
+	install_pre_reboot_cmds = ""
+	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
+EOF
+  else
+    # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
+    # The "ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00" command can be replaced with "ipmitool chassis bootdev disk options=persistent,efiboot" once a new IPMI tool version is released
+    tee -a flatcar/terraform.tfvars <<-EOF
+	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
+	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
+	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
+EOF
   fi
 }
 
@@ -546,20 +663,17 @@ function error_guidance() {
   echo "  cd lokomotive; lokoctl cluster|component apply"
 }
 
-if [ "$1" = create ]; then
-  create_network
-  sudo rm -rf "/opt/racker-state/matchbox/groups/"*
-  rm -rf "${ASSET_DIR}/terraform" "${ASSET_DIR}/terraform-modules"  "${ASSET_DIR}/cluster-assets"
-  get_assets
-  create_certs
-  create_ssh_key
-  create_containers
-
-  gen_cluster_vars
-
+function execute_with_retry() {
+  directory=$1
+  exec_command=$2
+  tries=$3
   ret=0
-  tries=0
-  lokoctl cluster apply --verbose --skip-components || ret=$?
+  # cd into the directory for execution
+  # For lokoctl, it will be the $PWD, for flatcar provisioning
+  # it will be $FLATCAR_DIR.
+  cd $directory
+
+  $exec_command || ret=$?
   while [ "${ret}" != 0 ]; do
     if [ "${ONFAILURE}" = retry ]; then
       CHOICE=r
@@ -568,7 +682,6 @@ if [ "$1" = create ]; then
         error_guidance
         exit ${ret}
       fi
-      let tries+=1
       echo "Something went wrong, retrying ${tries}/${RETRIES}"
     elif [ "${ONFAILURE}" = cancel ]; then
       CHOICE=c
@@ -577,7 +690,14 @@ if [ "$1" = create ]; then
     fi
     if [ "${CHOICE}" = "" ] || [ "${CHOICE}" = "r" ]; then
       ret=0
-      lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm || ret=$?
+      let tries+=1
+
+      if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+       execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm" ${tries}
+      else
+       execute_with_retry "$PWD" "$exec_command" ${tries}
+      fi
+
     elif [ "${CHOICE}" = "c" ]; then
       echo "Canceling"
       error_guidance
@@ -587,17 +707,38 @@ if [ "$1" = create ]; then
       continue
     fi
   done
-  lokoctl component apply
-  if [ -z "$USE_QEMU" ]; then
-    echo "Setting up ~/.kube/config symlink for kubectl"
-    ln -fs "${ASSET_DIR}/cluster-assets/auth/kubeconfig" ~/.kube/config
+}
+
+if [ "$1" = create ]; then
+  create_network
+  sudo rm -rf "/opt/racker-state/matchbox/groups/"*
+  get_assets
+  create_certs
+  create_ssh_key
+  create_containers
+
+  if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+    gen_cluster_vars
+    execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components" 0
+    lokoctl component apply
+    if [ -z "$USE_QEMU" ]; then
+      echo "Setting up ~/.kube/config symlink for kubectl"
+      ln -fs "${ASSET_DIR}/cluster-assets/auth/kubeconfig" ~/.kube/config
+    fi
+    echo "The cluster is ready."
+    echo "Running the racker bootstrap command is not needed anymore if you want to change something."
+    echo "To modify the settings you can now directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+    echo "  cd lokomotive; lokoctl cluster|component apply"
+  else
+    rm -rf "$FLATCAR_ASSETS_DIR" "$FLATCAR_DIR/.terraform" "$FLATCAR_DIR/terraform.tfvars" "$FLATCAR_DIR/terraform.tfstate" "$FLATCAR_DIR/terraform.tfstate.backup"
+    mkdir "${FLATCAR_ASSETS_DIR}"
+    gen_flatcar_vars
+    execute_with_retry "$FLATCAR_DIR" "terraform init" 0
+    execute_with_retry "$FLATCAR_DIR" "terraform apply --auto-approve" 0
   fi
-  echo "The cluster is ready."
-  echo "Running the racker bootstrap command is not needed anymore if you want to change something."
-  echo "To modify the settings you can now directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-  echo "  cd lokomotive; lokoctl cluster|component apply"
 else
   if [ -n "$USE_QEMU" ]; then
     destroy_all
   fi
 fi
+
