@@ -69,7 +69,11 @@ args:
   var: USE_VELERO
   flag:
     skip: true
-  help: You will be allowed to set up a backup to S3
+  help: "You will be allowed to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding: \n
+    S3 bucket, IAM user for Velero, required policies by the IAM user on the S3 bucket, Access Keys for the IAM user.\n
+    Following the steps outlined for the resources:\n
+    Create S3 bucket: https://github.com/vmware-tanzu/velero-plugin-for-aws#create-s3-bucket \n
+    Creation of IAM user and permissions for the IAM User: https://github.com/vmware-tanzu/velero-plugin-for-aws#set-permissions-for-velero"
   default: false
   prompt:
     message: Do you want to set up backup/restore?
@@ -116,8 +120,8 @@ args:
       prompt: backup-s3-bucket
 - name: backup-s3-bucket
   var: BACKUP_S3_BUCKET_NAME
-  help: Provide the name of the S3 bucket you want the back up to be stored at.
-  default: lokomotive-backup
+  help: Provide the name of the S3 bucket you want the back up to be stored at. Leave empty to go back.
+  default:
   prompt:
     skip: true
     message: Enter the S3 bucket name
