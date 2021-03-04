@@ -1,0 +1,3 @@
+component "web-ui" {}
+
+component "metrics-server" {}

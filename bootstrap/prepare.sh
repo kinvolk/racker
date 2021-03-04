@@ -587,6 +587,10 @@ EOF
   if [ "$type" = "lokomotive" ]; then
     copy_script baremetal.lokocfg
 
+    if [ "$USE_WEB_UI" = "true" ]; then
+      copy_script web-ui.lokocfg
+    fi
+
     if [ "$USE_VELERO" = "true" ]; then
       create_backup_credentials
       tee -a lokocfg.vars <<-EOF
