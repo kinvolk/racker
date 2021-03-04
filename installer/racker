@@ -162,6 +162,15 @@ elif [ "$1" = bootstrap ]; then
 
     provision_args_file="/opt/racker/bootstrap/args.yaml"
   elif [ "$PROVISION_TYPE" == "flatcar" ]; then
+    PROVISION_DIR="$HOME/flatcar-container-linux"
+    # Remove the dir if it's empty so we don't prevent a rerun if the dir is empty
+    rmdir $PROVISION_DIR 2>/dev/null || true
+
+    mkdir $PROVISION_DIR || { echo "A Flatcar configuration already exists."
+    echo "If you want to bootstrap a new cluster, remove the $PROVISION folder first and then run racker bootstrap."
+    exit 1 ; }
+    cd $PROVISION_DIR
+
     provision_args_file="/opt/racker/bootstrap/flatcar/args.yaml"
   else
     echo "Unknown provision type value: $PROVISION_TYPE"

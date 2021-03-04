@@ -5,11 +5,10 @@ set -euo pipefail
 PROVISION_TYPE=${PROVISION_TYPE:-"lokomotive"}
 ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "cancel"
 RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
-FLATCAR_DIR="$PWD/flatcar"
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
-FLATCAR_ASSETS_DIR="${FLATCAR_DIR}/assets"
+FLATCAR_ASSETS_DIR="${CLUSTER_DIR}/assets"
 PUBLIC_IP_ADDRS="${PUBLIC_IP_ADDRS:-"DHCP"}" # "DHCP" or otherwise an INI-like format with "[SECONDARY_MAC_ADDR]" sections and "ip_addr = IP_V4_ADDR/SUBNETSIZE", "gateway = GATEWAY_ADDR", "dns = DNS_ADDR" entries
 if [ "${PUBLIC_IP_ADDRS}" = "DHCP" ]; then
   # use an empty INI config for no custom IP address configurations
@@ -664,14 +663,9 @@ function error_guidance() {
 }
 
 function execute_with_retry() {
-  directory=$1
-  exec_command=$2
-  tries=$3
+  exec_command=$1
+  tries=$2
   ret=0
-  # cd into the directory for execution
-  # For lokoctl, it will be the $PWD, for flatcar provisioning
-  # it will be $FLATCAR_DIR.
-  cd $directory
 
   $exec_command || ret=$?
   while [ "${ret}" != 0 ]; do
@@ -693,9 +687,9 @@ function execute_with_retry() {
       let tries+=1
 
       if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
-       execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm" ${tries}
+       execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm" ${tries}
       else
-       execute_with_retry "$PWD" "$exec_command" ${tries}
+       execute_with_retry "$exec_command" ${tries}
       fi
 
     elif [ "${CHOICE}" = "c" ]; then
@@ -719,7 +713,7 @@ if [ "$1" = create ]; then
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     gen_cluster_vars
-    execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components" 0
+    execute_with_retry "lokoctl cluster apply --verbose --skip-components" 0
     lokoctl component apply
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
@@ -730,11 +724,11 @@ if [ "$1" = create ]; then
     echo "To modify the settings you can now directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
     echo "  cd lokomotive; lokoctl cluster|component apply"
   else
-    rm -rf "$FLATCAR_ASSETS_DIR" "$FLATCAR_DIR/.terraform" "$FLATCAR_DIR/terraform.tfvars" "$FLATCAR_DIR/terraform.tfstate" "$FLATCAR_DIR/terraform.tfstate.backup"
+    rm -rf "$FLATCAR_ASSETS_DIR" "$CLUSTER_DIR/.terraform" "$CLUSTER_DIR/terraform.tfvars" "$CLUSTER_DIR/terraform.tfstate" "$CLUSTER_DIR/terraform.tfstate.backup"
     mkdir "${FLATCAR_ASSETS_DIR}"
     gen_flatcar_vars
-    execute_with_retry "$FLATCAR_DIR" "terraform init" 0
-    execute_with_retry "$FLATCAR_DIR" "terraform apply --auto-approve" 0
+    execute_with_retry "terraform init" 0
+    execute_with_retry "terraform apply --auto-approve" 0
   fi
 else
   if [ -n "$USE_QEMU" ]; then
