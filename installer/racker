@@ -31,6 +31,15 @@ pull_n_run_racker() {
   run_racker $1 $2
 }
 
+split_args() {
+  local provision_arg=$1
+  provision_arg=$(echo $provision_arg|tr '=' ' ')
+  local first_arg=${provision_arg[@]}
+  local len_first_arg=${#first_arg[@]}
+  local rest_args=${@:$len_first_arg:}
+  echo "${first_arg[@]} ${rest_args[@]}"
+}
+
 usage() {
   declare -A args=(
     ["bootstrap -- ..."]="guided setup for Lokomotive Kubernetes"
@@ -107,13 +116,18 @@ elif [ "$1" = bootstrap ]; then
     pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
-  if [ $# -lt 2 ] || { [ "$2" != "-h" ] && [ "$2" != "--help" ]; }; then
-    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
-      echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-      echo "  cd lokomotive; lokoctl cluster|component apply"
-      echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
-      exit 1 ; }
-    cd ~/lokomotive
+
+  # Discard the bootstrap as first arg
+  declare -a ARGS
+  ARGS="${@:2}"
+  if [ ${#ARGS} -gt 1 ]; then
+    # Split the first arg if it has an = sign, so we can just then use this one
+    # for the first wizard, and the rest for the flatcar/lokomotive wizards.
+    declare -a first_arg
+    first_arg=($(echo ${ARGS[0]}|tr '=' ' '))
+    len_first_arg=${#first_arg[@]}
+    rest_args=${ARGS[@]:$len_first_arg}
+    ARGS=("${first_arg[@]}" "${rest_args[@]}")
   fi
 
   # Find the list of available node types, excluding the management node
@@ -125,9 +139,9 @@ elif [ "$1" = bootstrap ]; then
   prefill=$(echo -n "${prefill_unquoted}" | sed 's/^/    /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
-  EDITOR_TMP=/tmp/racker
-  mkdir -p $EDITOR_TMP
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${@:2}"
+
+  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- ${ARGS[@]::2}
+
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
@@ -137,27 +151,35 @@ elif [ "$1" = bootstrap ]; then
   . $ARGS_FILE
   set +a
 
-  if [ "$PROVISION_TYPE" == "Lokomotive" ]; then
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
-    # Exit on -h
-    if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
-      exit 0
-    fi
-    # Load the variables into context
-    set -a
-    . $ARGS_FILE
-    set +a
-  elif [ "$PROVISION_TYPE" == "Flatcar" ]; then
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/flatcar/flatcar-args.yaml) > $ARGS_FILE -- "${@:2}"
-    # Exit on -h
-    if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
-      exit 0
-    fi
-    # Load the variables into context
-    set -a
-    . $ARGS_FILE
-    set +a
+  provision_args_file=""
+  if [ "$PROVISION_TYPE" == "lokomotive" ]; then
+    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
+    echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+    echo "  cd lokomotive; lokoctl cluster|component apply"
+    echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+    exit 1 ; }
+    cd ~/lokomotive
+
+    provision_args_file="/opt/racker/bootstrap/args.yaml"
+  elif [ "$PROVISION_TYPE" == "flatcar" ]; then
+    provision_args_file="/opt/racker/bootstrap/flatcar/args.yaml"
+  else
+    echo "Unknown provision type value: $PROVISION_TYPE"
+    exit 1
   fi
+
+  EDITOR_TMP=/tmp/racker
+  mkdir -p $EDITOR_TMP
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- ${ARGS[@]:2}
+  echo $provision_args_file
+  # Exit on -h
+  if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
+    exit 0
+  fi
+  # Load the variables into context
+  set -a
+  . $ARGS_FILE
+  set +a
 
   LOCKSMITH_ENABLED=$(systemctl is-active --quiet locksmithd && echo true || echo false)
   if $LOCKSMITH_ENABLED; then

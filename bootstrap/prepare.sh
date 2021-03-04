@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PROVISION_TYPE=${PROVISION_TYPE:-"Lokomotive"}
+PROVISION_TYPE=${PROVISION_TYPE:-"lokomotive"}
 ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "cancel"
 RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
 FLATCAR_DIR="$PWD/flatcar"
@@ -412,7 +412,7 @@ function destroy_nodes() {
 }
 
 function destroy_all() {
-  if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+  if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     destroy_nodes
   else
     destroy_flatcar_nodes
@@ -692,7 +692,7 @@ function execute_with_retry() {
       ret=0
       let tries+=1
 
-      if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+      if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
        execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm" ${tries}
       else
        execute_with_retry "$PWD" "$exec_command" ${tries}
@@ -717,7 +717,7 @@ if [ "$1" = create ]; then
   create_ssh_key
   create_containers
 
-  if [ "${PROVISION_TYPE}" = "Lokomotive" ]; then
+  if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     gen_cluster_vars
     execute_with_retry "$PWD" "lokoctl cluster apply --verbose --skip-components" 0
     lokoctl component apply

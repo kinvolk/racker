@@ -1,12 +1,14 @@
 args:
-- name: provision-type
+- name: provision
   var: PROVISION_TYPE
-  default: Lokomotive
+  default: lokomotive
+  flag:
+    help: Value should be "lokomotive" or "flatcar"
   options:
   - display: Lokomotive Kubernetes
-    value:  Lokomotive
+    value:  lokomotive
   - display: Flatcar Container Linux
-    value: Flatcar
+    value: flatcar
   prompt:
-    message: Choose the provisioning type, Lokomotive Kubernetes or Flatcar Container Linux
+    message: Choose what to provision
     type: select
