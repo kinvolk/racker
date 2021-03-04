@@ -24,6 +24,11 @@ RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then
   RACKER_VERSION="latest"
 fi
+BACKUP_AWS_ACCESS_KEY=${BACKUP_AWS_ACCESS_KEY:-""}
+BACKUP_AWS_SECRET_ACCESS_KEY=${BACKUP_AWS_SECRET_ACCESS_KEY:-""}
+BACKUP_NAME=${BACKUP_NAME:-"lokomotive"}
+BACKUP_S3_BUCKET_NAME=${BACKUP_S3_BUCKET_NAME:-""}
+BACKUP_AWS_REGION=${BACKUP_AWS_REGION:-""}
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
@@ -393,6 +398,20 @@ function add_to_etc_hosts() {
   echo "${ip_addr} ${names}" | sudo tee -a /etc/hosts
 }
 
+function create_backup_credentials() {
+  sed \
+    -e "s/{{ACCESS_KEY}}/$BACKUP_AWS_ACCESS_KEY/g" \
+    -e "s/{{SECRET_KEY}}/$BACKUP_AWS_SECRET_ACCESS_KEY/g" \
+    < "$SCRIPTFOLDER/backup-credentials.template" > "./backup-credentials"
+}
+
+function copy_script() {
+  local script_name="$1"
+  if ! cmp --silent "$SCRIPTFOLDER/$script_name" $script_name; then
+    cp "$SCRIPTFOLDER/$script_name" ./
+  fi
+}
+
 function gen_cluster_vars() {
   local count=0
   local name="controller"
@@ -504,8 +523,16 @@ EOF
 EOF
   fi
 
-  if ! cmp --silent "$SCRIPTFOLDER/baremetal.lokocfg" baremetal.lokocfg; then
-    cp "$SCRIPTFOLDER/baremetal.lokocfg" ./
+  copy_script baremetal.lokocfg
+
+  if [ "$USE_VELERO" = "true" ]; then
+    create_backup_credentials
+    tee -a lokocfg.vars <<-EOF
+	backup_name = "${BACKUP_NAME}"
+	backup_s3_bucket_name = "${BACKUP_S3_BUCKET_NAME}"
+	backup_aws_region = "${BACKUP_AWS_REGION}"
+EOF
+    copy_script velero.lokocfg
   fi
 }
 
