@@ -153,12 +153,16 @@ elif [ "$1" = bootstrap ]; then
 
   provision_args_file=""
   if [ "$PROVISION_TYPE" == "lokomotive" ]; then
-    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
+    PROVISION_DIR="$HOME/lokomotive"
+    # Remove the dir if it's empty so we don't prevent a rerun if the dir is empty
+    rmdir $PROVISION_DIR 2>/dev/null || true
+
+    mkdir $PROVISION_DIR || { echo "A Lokomotive configuration already exists."
     echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-    echo "  cd lokomotive; lokoctl cluster|component apply"
-    echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+    echo "  cd $PROVISION_DIR; lokoctl cluster|component apply"
+    echo "Only if you want to bootstrap a new cluster, remove the $PROVISION_DIR folder first and then run racker bootstrap."
     exit 1 ; }
-    cd ~/lokomotive
+    cd $PROVISION_DIR
 
     provision_args_file="/opt/racker/bootstrap/args.yaml"
   elif [ "$PROVISION_TYPE" == "flatcar" ]; then
