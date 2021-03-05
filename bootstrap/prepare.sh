@@ -9,6 +9,7 @@ CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
 ASSET_DIR="${CLUSTER_DIR}/lokoctl-assets"
 FLATCAR_ASSETS_DIR="${CLUSTER_DIR}/assets"
+EXCLUDE_NODES=(${EXCLUDE_NODES-""}) # white-space separated list of MAC addresses to exclude from provisioning (don't change VAR- to VAR:-)
 PUBLIC_IP_ADDRS="${PUBLIC_IP_ADDRS:-"DHCP"}" # "DHCP" or otherwise an INI-like format with "[SECONDARY_MAC_ADDR]" sections and "ip_addr = IP_V4_ADDR/SUBNETSIZE", "gateway = GATEWAY_ADDR", "dns = DNS_ADDR" entries
 if [ "${PUBLIC_IP_ADDRS}" = "DHCP" ]; then
   # use an empty INI config for no custom IP address configurations
@@ -110,6 +111,11 @@ else
   NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
   FULL_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 1)) # sorted MAC addresses will be used to assign the IP addresses
   FULL_BMC_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 2))
+  if [ "${#EXCLUDE_NODES[*]}" != 0 ]; then
+    for node in ${EXCLUDE_NODES[*]}; do
+      NODES="$(echo "$NODES" | grep -v "${node}")"
+    done
+  fi
   CONTROLLERS="$(echo "$NODES" | grep -m "$CONTROLLER_AMOUNT" "[ ,]$CONTROLLER_TYPE")"
   if [ "$(echo "$CONTROLLERS" | wc -l)" != "$CONTROLLER_AMOUNT" ]; then
     echo "wrong amount of controller nodes found (check the CONTROLLER_TYPE and CONTROLLER_AMOUNT)"
