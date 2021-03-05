@@ -664,15 +664,15 @@ function error_guidance() {
 
 function execute_with_retry() {
   exec_command=$1
-  tries=$2
+  tries=${2:-1}
   ret=0
 
   $exec_command || ret=$?
   while [ "${ret}" != 0 ]; do
     if [ "${ONFAILURE}" = retry ]; then
       CHOICE=r
-      if [ "${tries}" = "${RETRIES}" ]; then
-        echo "Error after ${tries} retries"
+      if [ "${tries}" -gt "${RETRIES}" ]; then
+        echo "Error after ${RETRIES} retries"
         error_guidance
         exit ${ret}
       fi
@@ -713,7 +713,7 @@ if [ "$1" = create ]; then
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     gen_cluster_vars
-    execute_with_retry "lokoctl cluster apply --verbose --skip-components" 0
+    execute_with_retry "lokoctl cluster apply --verbose --skip-components"
     lokoctl component apply
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
@@ -727,8 +727,8 @@ if [ "$1" = create ]; then
     rm -rf "$FLATCAR_ASSETS_DIR" "$CLUSTER_DIR/.terraform" "$CLUSTER_DIR/terraform.tfvars" "$CLUSTER_DIR/terraform.tfstate" "$CLUSTER_DIR/terraform.tfstate.backup"
     mkdir "${FLATCAR_ASSETS_DIR}"
     gen_flatcar_vars
-    execute_with_retry "terraform init" 0
-    execute_with_retry "terraform apply --auto-approve" 0
+    execute_with_retry "terraform init"
+    execute_with_retry "terraform apply --auto-approve"
   fi
 else
   if [ -n "$USE_QEMU" ]; then
