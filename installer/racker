@@ -39,6 +39,7 @@ usage() {
     ["get VERSION"]="install a particular racker version"
     ["factory"]="preparation procedure to configure the hardware"
     ["version"]="print racker version"
+    ["--exclude='MAC...'"]="bootstrap: exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
     ["--onfailure=(ask|retry|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
     ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
     ["-h/--help"]="show usage"
@@ -53,13 +54,18 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o ho:r: -l help,onfailure:,retries: -- "$@")
+ARGS=$(getopt -n "$0" -o he:o:r: -l help,exclude:,onfailure:,retries: -- "$@")
 eval set -- "$ARGS"
 
 while true; do
   case "${1:-}" in
     -h|--help)
       usage
+      ;;
+    --exclude)
+      shift
+      export EXCLUDE_NODES="$1"
+      shift
       ;;
     --onfailure)
       shift
