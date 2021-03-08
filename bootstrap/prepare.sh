@@ -686,12 +686,7 @@ function execute_with_retry() {
       ret=0
       let tries+=1
 
-      if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
-       execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm" ${tries}
-      else
-       execute_with_retry "$exec_command" ${tries}
-      fi
-
+      $exec_command || ret=$?
     elif [ "${CHOICE}" = "c" ]; then
       echo "Canceling"
       error_guidance
