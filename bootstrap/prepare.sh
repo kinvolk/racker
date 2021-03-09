@@ -726,7 +726,7 @@ if [ "$1" = create ]; then
     mkdir "${FLATCAR_ASSETS_DIR}"
     gen_flatcar_vars
     execute_with_retry "terraform init"
-    execute_with_retry "terraform apply --auto-approve"
+    execute_with_retry "terraform apply --auto-approve -parallelism=100"
   fi
 else
   if [ -n "$USE_QEMU" ]; then
