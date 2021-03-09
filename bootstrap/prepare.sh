@@ -450,7 +450,7 @@ function gen_flatcar_vars() {
   local clc_snippets="{"$'\n'
   local installer_clc_snippets="{"$'\n'
   local ip_Address=""
-  local snippets_dir="${FLATCAR_ASSETS_DIR}/cl"
+  local snippets_dir="cl"
 
   for mac in ${MAC_ADDRESS_LIST[*]}; do
     ip_address="$(calc_ip_addr $mac)"
@@ -723,7 +723,6 @@ if [ "$1" = create ]; then
     echo "To modify the settings you can now directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
     echo "  cd lokomotive; lokoctl cluster|component apply"
   else
-    rm -rf "$FLATCAR_ASSETS_DIR" "$CLUSTER_DIR/.terraform" "$CLUSTER_DIR/terraform.tfvars" "$CLUSTER_DIR/terraform.tfstate" "$CLUSTER_DIR/terraform.tfstate.backup"
     mkdir "${FLATCAR_ASSETS_DIR}"
     gen_flatcar_vars
     execute_with_retry "terraform init"
