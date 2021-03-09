@@ -33,7 +33,7 @@ pull_n_run_racker() {
 
 usage() {
   declare -A args=(
-    ["bootstrap -- ..."]="guided setup for Lokomotive Kubernetes"
+    ["bootstrap -- [-provision (flatcar|lokomotive)] [-h] ..."]="guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
     ["update"]="install updates for the current racker version"
     ["upgrade"]="migrate to a newer racker version"
     ["get VERSION"]="install a particular racker version"
