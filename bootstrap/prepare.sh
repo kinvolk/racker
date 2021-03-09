@@ -503,7 +503,7 @@ EOF
   # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
   # which would be a Terraform variable).
-  tee flatcar/terraform.tfvars <<-EOF
+  tee terraform.tfvars <<-EOF
 	asset_dir = "${FLATCAR_ASSETS_DIR}"
 	node_macs = ${node_macs}
 	node_names = ${node_names}
@@ -512,7 +512,7 @@ EOF
 	installer_clc_snippets = ${installer_clc_snippets}
 EOF
   if [ -n "$USE_QEMU" ]; then
-    tee -a flatcar/terraform.tfvars <<-EOF
+    tee -a terraform.tfvars <<-EOF
 	kernel_console = []
 	install_pre_reboot_cmds = ""
 	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
@@ -520,12 +520,17 @@ EOF
   else
     # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
     # The "ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00" command can be replaced with "ipmitool chassis bootdev disk options=persistent,efiboot" once a new IPMI tool version is released
-    tee -a flatcar/terraform.tfvars <<-EOF
+    tee -a terraform.tfvars <<-EOF
 	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
 	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
 	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
 EOF
   fi
+  mkdir templates
+  cp "$SCRIPTFOLDER"/flatcar/templates/base.yaml.tmpl templates/base.yaml.tmpl
+  copy_script flatcar/variables.tf
+  copy_script flatcar/versions.tf
+  copy_script flatcar/flatcar.tf
 }
 
 function gen_cluster_vars() {
