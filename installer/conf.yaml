@@ -30,4 +30,4 @@ modules:
     - unzip terraform.zip -d bin/ && rm terraform.zip
     - mkdir velero-ext && tar -C velero-ext --strip-components=1 -xvzf velero.tar.gz && mv ./velero-ext/velero ./bin/ && rm -rf velero.tar.gz velero-ext
     - mv kubectl bin/ && chmod +x bin/kubectl
-    - cd lokomotive && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive
+    - cd lokomotive && cp -r assets/terraform-modules/matchbox-flatcar/ ../terraform/ && make && cp lokoctl ../bin/ && cd .. && rm -rf lokomotive

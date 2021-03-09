@@ -1,6 +1,6 @@
 module "flatcar-provisioning" {
 
-  source = "git@github.com:kinvolk/lokomotive.git//assets/terraform-modules/matchbox-flatcar?ref=imran/baremetal-reprovisioning"
+  source = "/opt/racker/terraform/"
 
   count                    = length(var.node_names)
   http_endpoint            = "http://${var.matchbox_addr}:8080"
@@ -28,7 +28,7 @@ provider "matchbox" {
 
 data "ct_config" "node_clc_config" {
   count = length(var.node_names)
-  content = templatefile("${path.module}/templates/install.yaml.tmpl", {
+  content = templatefile("${path.module}/templates/base.yaml.tmpl", {
     ssh_keys = jsonencode([file(pathexpand("~/.ssh/id_rsa.pub"))])
   })
 
