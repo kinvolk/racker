@@ -443,99 +443,10 @@ function copy_script() {
   fi
 }
 
-function gen_flatcar_vars() {
-  local count=0
-  local node_macs="["
-  local node_names="["
-  local clc_snippets="{"$'\n'
-  local installer_clc_snippets="{"$'\n'
-  local ip_Address=""
-  local snippets_dir="cl"
-
-  for mac in ${MAC_ADDRESS_LIST[*]}; do
-    ip_address="$(calc_ip_addr $mac)"
-    id="node-"${count}
-    add_to_etc_hosts "${ip_address}" "${id}"
-    node_macs+="\"${mac}\", "
-    node_names+="\"${id}\", "
-
-    mkdir -p ${snippets_dir}
-    clc_snippets+="\"${id}\" = [\"${snippets_dir}/${id}.yaml\", \"${snippets_dir}/${id}-custom.yaml\"]"$'\n'
-    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}//g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "${snippets_dir}/${id}.yaml"
-    if [ "${#PUBLIC_IP_ADDRS_LIST[*]}" != "0" ]; then
-      installer_clc_snippets+="\"${id}\" = [\"${snippets_dir}/${id}-custom.yaml\"]"$'\n'
-      for entry in ${PUBLIC_IP_ADDRS_LIST[*]}; do
-        unpacked=($(echo $entry | tr - ' '))
-        secondary_mac="${unpacked[0]}"
-        ipv4_addr_and_subnet="${unpacked[1]}"
-        gateway="${unpacked[2]}"
-        dns="${unpacked[3]}"
-        if [ "$(grep ${mac} /usr/share/oem/nodes.csv | grep ${secondary_mac})" != "" ]; then
-          tee -a "${snippets_dir}/${id}-custom.yaml" <<-EOF
-	networkd:
-	  units:
-	    - name: 10-public-stable.network
-	      contents: |
-	        [Match]
-	        MACAddress=${secondary_mac}
-	        [Address]
-	        Address=${ipv4_addr_and_subnet}
-	        [Network]
-	        DHCP=no
-	        LinkLocalAddressing=no
-	        DNS=${dns}
-	        [Route]
-	        Destination=0.0.0.0/0
-	        Gateway=${gateway}
-EOF
-        fi
-      done
-    else
-      echo > "${snippets_dir}/${id}-custom.yaml"
-    fi
-    let count+=1
-  done
-  node_macs+="]"
-  node_names+="]"
-  clc_snippets+=$'\n'"}"
-  installer_clc_snippets+=$'\n'"}"
-  # We escape $var as \$var for the bash heredoc to preserve it as Terraform string, use ${VAR} for the bash heredoc substitution.
-  # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
-  # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
-  # which would be a Terraform variable).
-  tee terraform.tfvars <<-EOF
-	asset_dir = "${FLATCAR_ASSETS_DIR}"
-	node_macs = ${node_macs}
-	node_names = ${node_names}
-	matchbox_addr = "$(get_matchbox_ip_addr)"
-	clc_snippets = ${clc_snippets}
-	installer_clc_snippets = ${installer_clc_snippets}
-EOF
-  if [ -n "$USE_QEMU" ]; then
-    tee -a terraform.tfvars <<-EOF
-	kernel_console = []
-	install_pre_reboot_cmds = ""
-	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
-EOF
-  else
-    # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
-    # The "ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00" command can be replaced with "ipmitool chassis bootdev disk options=persistent,efiboot" once a new IPMI tool version is released
-    tee -a terraform.tfvars <<-EOF
-	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
-	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
-	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
-EOF
-  fi
-  mkdir templates
-  cp "$SCRIPTFOLDER"/flatcar/templates/base.yaml.tmpl templates/base.yaml.tmpl
-  copy_script flatcar/variables.tf
-  copy_script flatcar/versions.tf
-  copy_script flatcar/flatcar.tf
-}
-
 function gen_cluster_vars() {
+  local type="$1"
   local count=0
-  local name="controller"
+  local name=""
   local controller_macs="["
   local worker_macs="["
   local controller_names="["
@@ -546,18 +457,27 @@ function gen_cluster_vars() {
   local controller_hosts=""
   local id=""
   local j=0
+  local variable_file=""
   sudo sed -i "/${SUBNET_PREFIX}./d" /etc/hosts
   sudo sed -i "/${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
-  for mac in ${CONTROLLERS_MAC[*]}; do
-    sudo sed -i "/${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
-    controller_hosts+="          $(calc_ip_addr $mac) ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-controller-${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}\n"
-    # special case not covered by add_to_etc_hosts function
-    echo "$(calc_ip_addr $mac)" "${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}" | sudo tee -a /etc/hosts
-    let j+=1
-  done
+  if [ "$type" = "lokomotive" ]; then
+    for mac in ${CONTROLLERS_MAC[*]}; do
+      sudo sed -i "/${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
+      controller_hosts+="          $(calc_ip_addr $mac) ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-controller-${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}\n"
+      # special case not covered by add_to_etc_hosts function
+      echo "$(calc_ip_addr $mac)" "${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}" | sudo tee -a /etc/hosts
+      let j+=1
+    done
+    # initialize the variable for Lokomotive to use controller_* variables while plain Flatcar only uses the worker_* variables
+    name="controller"
+  fi
   for mac in ${MAC_ADDRESS_LIST[*]}; do
     ip_address="$(calc_ip_addr $mac)"
-    id="${CLUSTER_NAME}-${name}-${count}.${KUBERNETES_DOMAIN_NAME}"
+    if [ "$type" = "lokomotive" ]; then
+      id="${CLUSTER_NAME}-${name}-${count}.${KUBERNETES_DOMAIN_NAME}"
+    else
+      id="node-"${count}
+    fi
     add_to_etc_hosts "${ip_address}" "${id}"
     if [ "$name" = "controller" ]; then
       controller_macs+="\"${mac}\", "
@@ -616,7 +536,8 @@ EOF
   # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
   # which would be a Terraform variable).
-  tee lokocfg.vars <<-EOF
+  if [ "$type" = "lokomotive" ]; then
+    tee lokocfg.vars <<-EOF
 	cluster_name = "${CLUSTER_NAME}"
 	asset_dir = "${ASSET_DIR}"
 	k8s_domain_name = "${KUBERNETES_DOMAIN_NAME}"
@@ -628,8 +549,20 @@ EOF
 	clc_snippets = ${clc_snippets}
 	installer_clc_snippets = ${installer_clc_snippets}
 EOF
+  variable_file="lokocfg.vars"
+  else
+    tee terraform.tfvars <<-EOF
+	asset_dir = "${FLATCAR_ASSETS_DIR}"
+	node_macs = ${worker_macs}
+	node_names = ${worker_names}
+	matchbox_addr = "$(get_matchbox_ip_addr)"
+	clc_snippets = ${clc_snippets}
+	installer_clc_snippets = ${installer_clc_snippets}
+EOF
+  variable_file="terraform.tfvars"
+  fi
   if [ -n "$USE_QEMU" ]; then
-    tee -a lokocfg.vars <<-EOF
+    tee -a "${variable_file}" <<-EOF
 	kernel_console = []
 	install_pre_reboot_cmds = ""
 	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
@@ -637,23 +570,31 @@ EOF
   else
     # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
     # The "ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00" command can be replaced with "ipmitool chassis bootdev disk options=persistent,efiboot" once a new IPMI tool version is released
-    tee -a lokocfg.vars <<-EOF
+    tee -a "${variable_file}" <<-EOF
 	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
 	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
 	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
 EOF
   fi
 
-  copy_script baremetal.lokocfg
+  if [ "$type" = "lokomotive" ]; then
+    copy_script baremetal.lokocfg
 
-  if [ "$USE_VELERO" = "true" ]; then
-    create_backup_credentials
-    tee -a lokocfg.vars <<-EOF
+    if [ "$USE_VELERO" = "true" ]; then
+      create_backup_credentials
+      tee -a lokocfg.vars <<-EOF
 	backup_name = "${BACKUP_NAME}"
 	backup_s3_bucket_name = "${BACKUP_S3_BUCKET_NAME}"
 	backup_aws_region = "${BACKUP_AWS_REGION}"
 EOF
-    copy_script velero.lokocfg
+      copy_script velero.lokocfg
+    fi
+  else
+    mkdir templates
+    cp "$SCRIPTFOLDER"/flatcar/templates/base.yaml.tmpl templates/base.yaml.tmpl
+    copy_script flatcar/variables.tf
+    copy_script flatcar/versions.tf
+    copy_script flatcar/flatcar.tf
   fi
 }
 
@@ -709,9 +650,9 @@ if [ "$1" = create ]; then
   create_certs
   create_ssh_key
   create_containers
+  gen_cluster_vars "${PROVISION_TYPE}"
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
-    gen_cluster_vars
     execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm"
     lokoctl component apply
     if [ -z "$USE_QEMU" ]; then
@@ -724,7 +665,6 @@ if [ "$1" = create ]; then
     echo "  cd lokomotive; lokoctl cluster|component apply"
   else
     mkdir "${FLATCAR_ASSETS_DIR}"
-    gen_flatcar_vars
     execute_with_retry "terraform init"
     execute_with_retry "terraform apply --auto-approve -parallelism=100"
   fi
