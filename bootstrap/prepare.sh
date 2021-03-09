@@ -663,8 +663,8 @@ function error_guidance() {
 }
 
 function execute_with_retry() {
-  exec_command=$1
-  tries=${2:-1}
+  exec_command="$1"
+  tries=0
   ret=0
 
   $exec_command || ret=$?
@@ -676,6 +676,7 @@ function execute_with_retry() {
         error_guidance
         exit ${ret}
       fi
+      let tries+=1
       echo "Something went wrong, retrying ${tries}/${RETRIES}"
     elif [ "${ONFAILURE}" = cancel ]; then
       CHOICE=c
@@ -684,8 +685,6 @@ function execute_with_retry() {
     fi
     if [ "${CHOICE}" = "" ] || [ "${CHOICE}" = "r" ]; then
       ret=0
-      let tries+=1
-
       $exec_command || ret=$?
     elif [ "${CHOICE}" = "c" ]; then
       echo "Canceling"
@@ -708,7 +707,7 @@ if [ "$1" = create ]; then
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     gen_cluster_vars
-    execute_with_retry "lokoctl cluster apply --verbose --skip-components"
+    execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm"
     lokoctl component apply
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
