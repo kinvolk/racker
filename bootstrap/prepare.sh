@@ -605,13 +605,22 @@ EOF
 }
 
 function error_guidance() {
-  echo "If individual nodes did not come up, you can retry later with:"
-  echo "  cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check --confirm --verbose"
-  echo "  ln -fs ${ASSET_DIR}/cluster-assets/auth/kubeconfig ~/.kube/config"
-  echo
-  echo "Once the above command is successful, running the racker bootstrap command is not needed anymore if you want to change something."
-  echo "To modify the settings you can then directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-  echo "  cd lokomotive; lokoctl cluster|component apply"
+  if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
+    echo "If individual nodes did not come up, you can retry later with:"
+    echo "  cd lokomotive; lokoctl cluster apply --skip-pre-update-health-check --confirm --verbose"
+    echo "  ln -fs ${ASSET_DIR}/cluster-assets/auth/kubeconfig ~/.kube/config"
+    echo
+    echo "Once the above command is successful, running the racker bootstrap command is not needed anymore if you want to change something."
+    echo "To modify the settings you can then directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+    echo "  cd lokomotive; lokoctl cluster|component apply"
+  else
+    echo "If individual nodes did not come up, you can retry later with:"
+    echo "  cd flatcar-container-linux; terraform apply --auto-approve -parallelism=100"
+    echo
+    echo "Once the above command is successful, running the racker bootstrap command is not needed anymore if you want to change something."
+    echo "To modify the settings you can then directly change the flatcar-container-linux/flatcar.tf config file"
+    echo "or the CLC snippet files flatcar-container-linux/cl/*yaml and run the above terraform command again."
+  fi
 }
 
 function execute_with_retry() {
@@ -673,6 +682,11 @@ if [ "$1" = create ]; then
     mkdir "${FLATCAR_ASSETS_DIR}"
     execute_with_retry "terraform init"
     execute_with_retry "terraform apply --auto-approve -parallelism=100"
+    echo "The nodes are provisioned with a minimal Ignition configuration (see the Container Linux Config files in flatcar-container-linux/cl/)."
+    echo "Running the racker bootstrap command is not needed anymore if you want to change something."
+    echo "To modify the settings you can now directly change the flatcar-container-linux/flatcar.tf config file"
+    echo "or the CLC snippet files flatcar-container-linux/cl/*yaml and run:"
+    echo "  cd flatcar-container-linux; terraform apply --auto-approve -parallelism=100"
   fi
 else
   if [ -n "$USE_QEMU" ]; then
