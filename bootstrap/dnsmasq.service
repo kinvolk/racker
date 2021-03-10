@@ -10,7 +10,7 @@ RestartSec=5s
 TimeoutStartSec=0
 EnvironmentFile=/opt/racker-state/dnsmasq-service
 ExecStartPre=-docker rm -f dnsmasq
-ExecStartPre=docker run --name dnsmasq -d --cap-add=NET_ADMIN -v /opt/racker-state/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z --net=host quay.io/poseidon/dnsmasq:d40d895ab529160657defedde36490bcc19c251f -d
+ExecStartPre=docker run --name dnsmasq -d --cap-add=NET_ADMIN --cap-add=NET_RAW -v /opt/racker-state/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:Z --net=host quay.io/poseidon/dnsmasq:d40d895ab529160657defedde36490bcc19c251f -d
 ExecStart=docker logs -f dnsmasq
 ExecStop=docker stop dnsmasq
 ExecStopPost=docker rm dnsmasq

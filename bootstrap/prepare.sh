@@ -362,10 +362,10 @@ EOF
 
   sudo docker run --name dnsmasq-external \
     -d \
-    --cap-add=NET_ADMIN \
+    --cap-add=NET_ADMIN --cap-add=NET_RAW \
     -v "/opt/racker-state/dnsmasq/dnsmasq-external.conf:/etc/dnsmasq.conf:Z" \
     --net=host \
-    quay.io/coreos/dnsmasq:v0.5.0 -d
+    quay.io/poseidon/dnsmasq:d40d895ab529160657defedde36490bcc19c251f -d
   fi
 }
 
