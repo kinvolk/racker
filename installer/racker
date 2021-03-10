@@ -152,28 +152,30 @@ elif [ "$1" = bootstrap ]; then
     true # the user just shows the help for the given provision type
   else
     # any existing directory needs to be removed first (and both directories can't coexist)
+    LOKOMOTIVE_DIR="$HOME/lokomotive"
+    FLATCAR_DIR="$HOME/flatcar-container-linux"
     # gracefully remove empty directories, otherwise guide the user
-    if [ -d "$HOME/lokomotive" ]; then
-      rmdir "$HOME/lokomotive" || { echo "A Lokomotive configuration already exists."
+    if [ -d "${LOKOMOTIVE_DIR}" ]; then
+      rmdir "${LOKOMOTIVE_DIR}" || { echo "A Lokomotive configuration already exists."
       echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
       echo "  cd lokomotive; lokoctl cluster|component apply"
-      echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
+      echo "Only if you want to bootstrap a new cluster, remove the ${LOKOMOTIVE_DIR} folder first and then run racker bootstrap."
       exit 1 ; }
     fi
-    if [ -d "$HOME/flatcar-container-linux" ]; then
-      rmdir "$HOME/flatcar-container-linux" || { echo "A Flatcar configuration already exists."
+    if [ -d "${FLATCAR_DIR}" ]; then
+      rmdir "${FLATCAR_DIR}" || { echo "A Flatcar configuration already exists."
       echo "To modify the settings you can directly change the flatcar-container-linux/flatcar.tf config file or the CLC snippet files flatcar-container-linux/cl/*yaml and run:"
       echo "  cd flatcar-container-linux; terraform apply"
-      echo "Only if you want to bootstrap a new cluster, remove the $HOME/flatcar-container-linux folder first and then run racker bootstrap."
+      echo "Only if you want to bootstrap a new cluster, remove the ${FLATCAR_DIR} folder first and then run racker bootstrap."
       exit 1 ; }
     fi
     # after ensuring that there will only be a single (new, empty) directory, create it
     if [ "$PROVISION_TYPE" == "lokomotive" ]; then
-      mkdir "$HOME/lokomotive"
-      cd "$HOME/lokomotive"
+      mkdir "${LOKOMOTIVE_DIR}"
+      cd "${LOKOMOTIVE_DIR}"
     elif [ "$PROVISION_TYPE" == "flatcar" ]; then
-      mkdir "$HOME/flatcar-container-linux"
-      cd "$HOME/flatcar-container-linux"
+      mkdir "${FLATCAR_DIR}"
+      cd "${FLATCAR_DIR}"
     else
       echo "Unknown provision type value: $PROVISION_TYPE"
       exit 1
