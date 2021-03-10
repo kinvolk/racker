@@ -632,12 +632,12 @@ function execute_with_retry() {
   while [ "${ret}" != 0 ]; do
     if [ "${ONFAILURE}" = retry ]; then
       CHOICE=r
+      let tries+=1
       if [ "${tries}" -gt "${RETRIES}" ]; then
         echo "Error after ${RETRIES} retries"
         error_guidance
         exit ${ret}
       fi
-      let tries+=1
       echo "Something went wrong, retrying ${tries}/${RETRIES}"
     elif [ "${ONFAILURE}" = cancel ]; then
       CHOICE=c
