@@ -278,7 +278,12 @@ func main() {
 				continue
 			}
 
-			ans := answers[argName]
+			ans, ok := answers[argName]
+
+			// Flags that are skipped will not be present on answers.
+			if !ok {
+				continue
+			}
 
 			s := ""
 			sPtr, ok := ans.(*string)
