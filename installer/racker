@@ -33,12 +33,13 @@ pull_n_run_racker() {
 
 usage() {
   declare -A args=(
-    ["bootstrap -- ..."]="guided setup for Lokomotive Kubernetes"
+    ["bootstrap -- [-provision (flatcar|lokomotive)] [-h] ..."]="guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
     ["update"]="install updates for the current racker version"
     ["upgrade"]="migrate to a newer racker version"
     ["get VERSION"]="install a particular racker version"
     ["factory"]="preparation procedure to configure the hardware"
     ["version"]="print racker version"
+    ["--exclude='MAC...'"]="bootstrap: exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
     ["--onfailure=(ask|retry|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
     ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
     ["-h/--help"]="show usage"
@@ -53,13 +54,18 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o ho:r: -l help,onfailure:,retries: -- "$@")
+ARGS=$(getopt -n "$0" -o he:o:r: -l help,exclude:,onfailure:,retries: -- "$@")
 eval set -- "$ARGS"
 
 while true; do
   case "${1:-}" in
     -h|--help)
       usage
+      ;;
+    --exclude)
+      shift
+      export EXCLUDE_NODES="$1"
+      shift
       ;;
     --onfailure)
       shift
@@ -107,13 +113,18 @@ elif [ "$1" = bootstrap ]; then
     pull_n_run_racker $IMAGE $VERSION
     exec sh -c "racker bootstrap"
   fi
-  if [ $# -lt 2 ] || { [ "$2" != "-h" ] && [ "$2" != "--help" ]; }; then
-    mkdir ~/lokomotive || { echo "A Lokomotive configuration already exists."
-      echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
-      echo "  cd lokomotive; lokoctl cluster|component apply"
-      echo "Only if you want to bootstrap a new cluster, remove the $HOME/lokomotive folder first and then run racker bootstrap."
-      exit 1 ; }
-    cd ~/lokomotive
+
+  # Discard the bootstrap as first arg
+  declare -a ARGS
+  ARGS=("${@:2}")
+  if [ ${#ARGS[*]} -gt 1 ]; then
+    # Split the first arg if it has an = sign, so we can just then use this one
+    # for the first wizard, and the rest for the flatcar/lokomotive wizards.
+    declare -a first_arg
+    first_arg=("$(echo ${ARGS[0]}|tr '=' ' ')")
+    len_first_arg=${#first_arg[@]}
+    rest_args=("${ARGS[@]:$len_first_arg}")
+    ARGS=("${first_arg[@]}" "${rest_args[@]}")
   fi
 
   # Find the list of available node types, excluding the management node
@@ -125,9 +136,65 @@ elif [ "$1" = bootstrap ]; then
   prefill=$(echo -n "${prefill_unquoted}" | sed 's/^/    /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
+
+  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${ARGS[@]::2}"
+
+  # Exit on -h
+  if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
+    exit 0
+  fi
+  # Load the variables into context
+  set -a
+  . $ARGS_FILE
+  set +a
+
+  if [ ${#ARGS[*]} -gt 2 ] && { [ "${ARGS[2]}" = "-h" ] || [ "${ARGS[2]}" = "--help" ]; }; then
+    true # the user just shows the help for the given provision type
+  else
+    # any existing directory needs to be removed first (and both directories can't coexist)
+    LOKOMOTIVE_DIR="$HOME/lokomotive"
+    FLATCAR_DIR="$HOME/flatcar-container-linux"
+    # gracefully remove empty directories, otherwise guide the user
+    if [ -d "${LOKOMOTIVE_DIR}" ]; then
+      rmdir "${LOKOMOTIVE_DIR}" || { echo "A Lokomotive configuration already exists."
+      echo "To modify the settings you can directly change the lokomotive/baremetal.lokocfg config file or the CLC snippet files lokomotive/cl/*yaml and run:"
+      echo "  cd lokomotive; lokoctl cluster|component apply"
+      echo "Only if you want to bootstrap a new cluster, remove the ${LOKOMOTIVE_DIR} folder first and then run racker bootstrap."
+      exit 1 ; }
+    fi
+    if [ -d "${FLATCAR_DIR}" ]; then
+      rmdir "${FLATCAR_DIR}" || { echo "A Flatcar configuration already exists."
+      echo "To modify the settings you can directly change the flatcar-container-linux/flatcar.tf config file or the CLC snippet files flatcar-container-linux/cl/*yaml and run:"
+      echo "  cd flatcar-container-linux; terraform apply"
+      echo "Only if you want to bootstrap a new cluster, remove the ${FLATCAR_DIR} folder first and then run racker bootstrap."
+      exit 1 ; }
+    fi
+    # after ensuring that there will only be a single (new, empty) directory, create it
+    if [ "$PROVISION_TYPE" == "lokomotive" ]; then
+      mkdir "${LOKOMOTIVE_DIR}"
+      cd "${LOKOMOTIVE_DIR}"
+    elif [ "$PROVISION_TYPE" == "flatcar" ]; then
+      mkdir "${FLATCAR_DIR}"
+      cd "${FLATCAR_DIR}"
+    else
+      echo "Unknown provision type value: $PROVISION_TYPE"
+      exit 1
+    fi
+  fi
+
+  provision_args_file=""
+  if [ "$PROVISION_TYPE" == "lokomotive" ]; then
+    provision_args_file="/opt/racker/bootstrap/args.yaml"
+  elif [ "$PROVISION_TYPE" == "flatcar" ]; then
+    provision_args_file="/opt/racker/bootstrap/flatcar/args.yaml"
+  else
+    echo "Unknown provision type value: $PROVISION_TYPE"
+    exit 1
+  fi
+
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" /opt/racker/bootstrap/args.yaml) > $ARGS_FILE -- "${@:2}"
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
@@ -142,7 +209,6 @@ elif [ "$1" = bootstrap ]; then
     # Stop locksmith to prevent a possible reboot while bootstrapping
     sudo systemctl stop locksmithd
   fi
-
   ret=0
   USE_QEMU=0 /opt/racker/bootstrap/prepare.sh create || ret=$?
 
