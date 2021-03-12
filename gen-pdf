@@ -1,0 +1,171 @@
+#!/bin/bash
+set -euo pipefail
+
+DOCKER="${DOCKER:-""}"
+
+docs_dir="$1"
+out_pdf="$2"
+out_pdf="$(readlink -f "${out_pdf}")"
+out_html="$(readlink -f "${out_pdf}")".html
+
+cd "${docs_dir}"
+
+function ordered_list() {
+  # TODO: generate similar output but ordered by weight
+  # sort with replacement to put _index.md first, then ASCII order (0-9, A-Z, a-z)
+  find . -name '*.md' | tr '_' '%' | LC_COLLATE=C sort | tr '%' '_' | grep -v 'README.md'
+}
+
+title="$({ grep "^title: " _index.md || true ; } | cut -d : -f 2-)"
+tee "${out_html}" > /dev/null <<EOF
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>${title}</title>
+  <style>
+    code{white-space: pre-wrap; font-size: 9pt; }
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    @media print {
+      h1 {page-break-before: always;}
+    }
+    h1 { counter-increment: h1; }
+    h2 { counter-increment: h2; }
+    h3 { counter-increment: h3; }
+    h4 { counter-increment: h4; }
+    h5 { counter-increment: h5; }
+    h6 { counter-increment: h6; }
+    body { counter-reset: h1 h2 h3 h4 h5 h6; }
+    h1 { counter-reset: h2 h3 h4 h5 h6; }
+    h2 { counter-reset: h3 h4 h5 h6; }
+    h3 { counter-reset: h4 h5 h6; }
+    h4 { counter-reset: h5 h6; }
+    h5 { counter-reset: h6; }
+    h1::before { content: counter(h1,decimal) ". "; }
+    h2::before { content: counter(h1,decimal) "." counter(h2,decimal) ". "; }
+    h3::before { content: counter(h1,decimal) "." counter(h2,decimal) "." counter(h3,decimal) ". "; }
+    h4::before { content: counter(h1,decimal) "." counter(h2,decimal) "." counter(h3,decimal) "." counter(h4,decimal) ". "; }
+    h5::before { content: counter(h1,decimal) "." counter(h2,decimal) "." counter(h3,decimal) "." counter(h4,decimal) "." counter(h5,decimal) ". "; }
+    h6::before { content: counter(h1,decimal) "." counter(h2,decimal) "." counter(h3,decimal) "." counter(h4,decimal) "." counter(h5,decimal) "." counter(h6,decimal) ". "; }
+  </style>
+</head>
+<body>
+EOF
+
+function get_level() {
+  filename="$1"
+  lev="$(echo "${filename}" | tr '/' '\n' | { grep -v '^\.' || true ; } | wc -l)"
+  if [ "${lev}" = "" ]; then
+    echo "error"
+    exit 1
+  fi
+  if [[ "${filename}" == *_index.md ]] && [ "${lev}" -gt 1 ]; then
+    # if subdir _index.md, start a with a higher level than the following md files
+    lev=$(( lev - 1 ))
+  fi
+  echo "${lev}"
+}
+
+function make_id() {
+  idtext="$1"
+  # remove leading and trailing whitespace, and convert all whitespace to a single space before replacement
+  # append _ to help preventing ID clashes with existing IDs
+  echo "${idtext}_" | xargs echo | tr ' ' '-'
+}
+
+function find_path() {
+  relative="$1"
+  # cut (.+/)+ away from the prefix
+  path_part="$(echo ".${relative}" | cut -d '#' -f 1 | sed 's#\./#/#g' | sed 's#\./##g')"
+  found="$(ordered_list | { grep -m 1 "${path_part}" || true ; })"
+  if [ "${found}" = "" ]; then
+    echo "/dev/null"
+  else
+    echo "${found}"
+  fi
+}
+
+function get_title() {
+  markdown_file="$1"
+  found_title="$({ grep "^title: " "${markdown_file}" || true ; } | cut -d : -f 2-)"
+  if [ "${found_title}" = "" ]; then
+    found_title="${markdown_file}"
+  fi
+  echo "${found_title}"
+}
+
+echo "<b>Contents</b>" >> "${out_html}"
+echo '<ol type="1">' >> "${out_html}"
+prev_level=1
+count=0
+for i in $(ordered_list); do
+  count=$(( count + 1 ))
+  level=$(get_level "${i}")
+  if [ "${level}" -gt "${prev_level}" ]; then
+    echo "<ol>" >> "${out_html}"
+  elif [ "${level}" -lt "${prev_level}" ]; then
+    echo "</li>" >> "${out_html}"
+    for j in $(seq 1 $(( prev_level - level ))); do
+      echo "</ol></li>" >> "${out_html}"
+    done
+  else
+    if [ "${count}" != 1 ]; then
+      echo "</li>" >> "${out_html}"
+    fi
+  fi
+  section_title="$(get_title "${i}")"
+  target="$(make_id "${section_title}")"
+  echo "<li><a href=\"#${target}\"> ${section_title}</a>" >> "${out_html}"
+  prev_level="${level}"
+done
+for i in $(seq 0 "${level}"); do
+  echo '</li></ol>' >> "${out_html}"
+done
+
+prev_level=1
+for i in $(ordered_list); do
+  section_title="$(get_title "${i}")"
+  level=$(get_level "${i}")
+  target="$(make_id "${section_title}")"
+  echo "<h${level} id=\"${target}\">${section_title}</h${level}>" >> "${out_html}"
+  # Replace hrefs html output if they point to markdown file with the section we generate for this file
+  html="$(${DOCKER} pandoc "${i}")"
+  links="$(echo "${html}" | { grep -P -o 'href="[^#].*?"' || true ; } | { grep -v 'href="http' || true ; } | cut -d '"' -f 2)"
+  for link in ${links}; do
+    new_link="#$(make_id "$(get_title "$(find_path "${link}")")")"
+    html="$(echo "${html}" | sed "s@${link}@${new_link}@g")"
+  done
+  # shift hX elements that pandoc generates to h(X+level)
+  lowest="$(echo "${html}" | { grep -o '<h[123456]' || true ; } | sort | head -n 1 | cut -c 3)"
+  if [ "${lowest}" != "" ]; then
+    sed_args=()
+    for x in $(seq ${lowest} 6); do
+      new_x=$(( level + 1 + x - lowest ))
+      if [ $new_x -gt 6 ]; then
+        new_x=6
+      fi
+      sed_args+=("s@<h${x}@<h${new_x}@g" "s@</h${x}>@</h${new_x}>@g")
+    done
+    # start shifting from last to not overwrite result of the previous shift
+    for arg_index in $(seq 0 $(( ${#sed_args[@]} - 1 )) | tac); do
+      html="$(echo "${html}" | sed -e "${sed_args[arg_index]}")"
+    done
+  fi
+  echo "${html}" >> "${out_html}"
+  prev_level="${level}"
+done
+
+tee -a "${out_html}" > /dev/null <<EOF
+</body>
+</html>
+EOF
+
+echo "Finished generating ${out_html}"
+${DOCKER} weasyprint "${out_html}" "${out_pdf}"
+echo "Finished generating ${out_pdf}"

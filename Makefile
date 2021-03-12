@@ -21,3 +21,12 @@ image-push:
 	docker push quay.io/kinvolk/racker:${VERSION}
 	docker tag racker:${VERSION} quay.io/kinvolk/racker:latest
 	docker push quay.io/kinvolk/racker:latest
+
+.PHONY: build-docs-docker-image
+build-docs-docker-image:
+	docker build -t weasy docs/
+
+.PHONY: generate-docs-pdf
+generate-docs-pdf:
+	echo "Using Docker/Podman, if this fails, ensure to run make build-docs-docker-image first"
+	DOCKER="docker run -i --rm -v ${PWD}/docs:/work -v ${PWD}:${PWD} -w /work weasy" ./gen-pdf docs output.pdf
