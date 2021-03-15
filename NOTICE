@@ -1,0 +1,3 @@
+The bootstrap/scripts/get-flatcar and bootstrap/scripts/tls/cert-gen
+files are published under the Apache License, Version 2.0, and
+originate from https://github.com/poseidon/matchbox/
