@@ -65,6 +65,18 @@ args:
   prompt:
     message: Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network
     type: input
+- name: web-ui
+  var: USE_WEB_UI
+  help: "Whether to install the Web UI component (also installs metrics-server)"
+  default: true
+  options:
+  - display: Yes
+    value: true
+  - display: No
+    value: false
+  prompt:
+    message: Do you want to install the Lokomotive Web UI?
+    type: select
 - name: config-backup
   var: USE_VELERO
   flag:
