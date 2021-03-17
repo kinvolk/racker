@@ -141,8 +141,9 @@ elif [ "$1" = bootstrap ]; then
     ARGS=("${first_arg[@]}" "${rest_args[@]}")
   fi
 
+  node_list="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address))"
   # Find the list of available node types, excluding the management node
-  node_types_list=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 4 | sed 's/ //g' | sort | uniq)
+  node_types_list=$(echo "${node_list}" | cut -d , -f 4 | sed 's/ //g' | sort | uniq)
   # Format it as YAML entries, adding a "  - " prefix, and, for sed, a "\n" string as newline directive (but only between the elements)
   node_types=$(echo -n "${node_types_list}" | sed 's/^/  - /' | sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
   sec_mac_addrs=$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | cut -d , -f 3 | sed 's/ //g')
@@ -206,9 +207,31 @@ elif [ "$1" = bootstrap ]; then
     exit 1
   fi
 
+  # Ensure we ask about type of cluster (HA or not) only if we have enough
+  # nodes for it.
+  ha_node_types=""
+  for node in ${node_types_list[@]}; do
+    num_nodes=$(echo "${node_list}" | grep "[ ,]$node"|wc -l)
+    # If there are at least 3 nodes of this node type, then set the
+    # next prompt as the one that asks for the controller amount
+    # (otherwise the controller amount prompt is skipped by default).
+    if [ $num_nodes -gt 2 ]; then
+      ha_node_types+="  - ${node}
+"
+    fi
+  done
+  first_cluster_type_prompt="num-controllers"
+  if [ ! -n "${ha_node_types}" ]; then
+    # We have no HA nodes available, so let's not prompt about that and skip
+    # directly into the simple nodes choosing
+    first_cluster_type_prompt="controller-type-simple"
+  else
+    ha_node_types=$(echo -n "${ha_node_types}"|sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
+  fi
+
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
