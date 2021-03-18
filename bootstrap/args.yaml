@@ -13,7 +13,7 @@ args:
       prompt: cluster-name
 - name: num-controllers
   var: CONTROLLER_AMOUNT
-  default: 3
+  default: ${default_num_controllers}
   options:
   - display: Highly-available (HA) control plane (3 redundant controller nodes)
     value: 3

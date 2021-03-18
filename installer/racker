@@ -210,6 +210,7 @@ elif [ "$1" = bootstrap ]; then
   # Ensure we ask about type of cluster (HA or not) only if we have enough
   # nodes for it.
   ha_node_types=""
+  default_num_controllers=1
   for node in ${node_types_list[@]}; do
     num_nodes=$(echo "${node_list}" | grep "[ ,]$node"|wc -l)
     # If there are at least 3 nodes of this node type, then set the
@@ -227,11 +228,12 @@ elif [ "$1" = bootstrap ]; then
     first_cluster_type_prompt="controller-type-simple"
   else
     ha_node_types=$(echo -n "${ha_node_types}"|sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
+    default_num_controllers=3
   fi
 
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
