@@ -112,9 +112,7 @@ args:
     type: select
 - name: config-backup
   var: USE_VELERO
-  flag:
-    skip: true
-  help: "You will be allowed to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding: \n
+  help: "Whether to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding: \n
     S3 bucket, IAM user for Velero, required policies by the IAM user on the S3 bucket, Access Keys for the IAM user.\n
     Following the steps outlined for the resources:\n
     Create S3 bucket: https://github.com/vmware-tanzu/velero-plugin-for-aws#create-s3-bucket \n
