@@ -284,11 +284,14 @@ func main() {
 			log.Fatal(err)
 		}
 
-		q := firstQuestion
-		for q != nil {
+		for _, q := range(argsMap) {
 			argName := q.Arg.Name
+
+			if q.Arg.Flag.Skip {
+				continue
+			}
+
 			resultVar := q.Arg.Var
-			q = q.Next
 
 			if resultVar == "" {
 				continue
