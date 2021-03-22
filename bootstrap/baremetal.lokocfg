@@ -23,6 +23,7 @@ cluster "bare-metal" {
   install_to_smallest_disk = "true"
   pxe_commands = var.pxe_commands
   install_pre_reboot_cmds = var.install_pre_reboot_cmds
+  node_specific_labels = var.node_specific_labels
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
@@ -90,4 +91,8 @@ variable "install_pre_reboot_cmds" {
 
 variable "k8s_domain_name" {
   type = string
+}
+
+variable "node_specific_labels" {
+  type = map(map(string))
 }
