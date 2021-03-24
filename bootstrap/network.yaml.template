@@ -12,6 +12,23 @@ networkd:
         [Network]
         DHCP=no
         LinkLocalAddressing=no
+    - name: 10-resolve.netdev
+      contents: |
+        [NetDev]
+        Name=resolve
+        Kind=dummy
+    - name: 10-resolve.network
+      contents: |
+        [Match]
+        Name=resolve
+        [Link]
+        RequiredForOnline=no
+        [Address]
+        Address=192.0.2.254/32
+        Scope=host
+        [Network]
+        DHCP=no
+        LinkLocalAddressing=no
 systemd:
   units:
     - name: boot-workaround-efi-disk-persist.service
@@ -29,8 +46,29 @@ systemd:
         ExecStart=docker run --privileged --net host --rm quay.io/kinvolk/racker:{{RACKER_VERSION}} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'
         [Install]
         WantedBy=multi-user.target
+    - name: use-systemd-resolved.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Workaround to have /etc/resolv.conf pointing to systemd-resolved but still be useable for the Kubelet/CoreDNS
+        PartOf=systemd-resolved.service
+        After=systemd-resolved.service
+        [Service]
+        Type=simple
+        Restart=always
+        RestartSec=1s
+        ExecStart=/bin/sh -c "while true; do sed -i 's/127.0.0.53/192.0.2.254/g' /run/systemd/resolve/stub-resolv.conf; ln -fs /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf; sleep 1; done"
+        [Install]
+        RequiredBy=systemd-resolved.service
 storage:
   files:
+    - path: /etc/systemd/resolved.conf
+      filesystem: root
+      mode: 0644
+      contents:
+        inline: |
+          [Resolve]
+          DNSStubListenerExtra=192.0.2.254
     - path: /etc/hosts
       filesystem: root
       mode: 0644

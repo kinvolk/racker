@@ -234,6 +234,8 @@ function create_network() {
 	LinkLocalAddressing=no
 EOF
     sudo networkctl reload
+    # kubectl should use systemd-resolved to get all controller IP addresses from /etc/hosts
+    sudo ln -fs /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
   fi
 }
 
