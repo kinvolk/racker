@@ -512,7 +512,11 @@ function gen_cluster_vars() {
     fi
     mkdir -p cl
     clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\", \"cl/${id}-custom.yaml\"]"$'\n'
-    sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "cl/${id}.yaml"
+    if [ "$type" = "lokomotive" ]; then
+      sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s/{{HOSTS}}/${controller_hosts}/g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/network.yaml.template" > "cl/${id}.yaml"
+    else
+      sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/flatcar/network.yaml.template" > "cl/${id}.yaml"
+    fi
     if [ "${#PUBLIC_IP_ADDRS_LIST[*]}" != "0" ]; then
       installer_clc_snippets+="\"${id}\" = [\"cl/${id}-custom.yaml\"]"$'\n'
       for entry in ${PUBLIC_IP_ADDRS_LIST[*]}; do
