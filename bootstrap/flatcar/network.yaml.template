@@ -1,0 +1,31 @@
+networkd:
+  units:
+    - name: 10-priv-stable.network
+      contents: |
+        [Match]
+        MACAddress={{MAC}}
+        [Link]
+        RequiredForOnline=no
+        [Address]
+        Address={{IP_ADDRESS}}/24
+        Scope=link
+        [Network]
+        DHCP=no
+        LinkLocalAddressing=no
+systemd:
+  units:
+    - name: boot-workaround-efi-disk-persist.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Workaround to really persist the boot settings because they get lost when the 60 secs timeout is not disabled. The last raw command can be replaced with ipmitool chassis bootdev disk options=persistent,efiboot once a new ipmitool version is released that fixes the bootdev command (only one flag out of efiboot and persistent works in 1.8.18).
+        Requires=network-online.target
+        After=network-online.target
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Restart=on-failure
+        RestartSec=5s
+        ExecStart=docker run --privileged --net host --rm quay.io/kinvolk/racker:{{RACKER_VERSION}} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'
+        [Install]
+        WantedBy=multi-user.target
