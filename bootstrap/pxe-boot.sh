@@ -34,13 +34,10 @@ if [ "${PXE_INTERFACE}" = "" ]; then
   exit 1
 fi
 
-bmcmac=$(grep -m 1 "$mac" /usr/share/oem/nodes.csv | cut -d , -f 2)
+bmcmac=$({ grep -m 1 "$mac" /usr/share/oem/nodes.csv || true ; } | cut -d , -f 2 | xargs)
 if [ "$bmcmac" = "" ]; then
   echo "BMC MAC address not found for $mac"
   exit 1
-else
-  # but may have whitespace as prefix/suffix, thus use without quotes to get rid of it
-  bmcmac=$(echo $bmcmac)
 fi
 bmcipaddr=""
 # poweron must be the last because when the OS comes up it does its own IPMI setup and we also don't know when any step after poweron would be executed
@@ -50,7 +47,7 @@ while [ $count -gt 0 ]; do
   count=$((count - 1))
   sleep 1
   if [ "$bmcipaddr" = "" ]; then
-    bmcipaddr=$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $bmcmac --interface ${PXE_INTERFACE} | grep -m 1 $bmcmac | cut -f 1")
+    bmcipaddr=$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $bmcmac --interface ${PXE_INTERFACE} | { grep -m 1 $bmcmac || true ; } | cut -f 1")
   fi
   if [ "$bmcipaddr" = "" ]; then
     continue

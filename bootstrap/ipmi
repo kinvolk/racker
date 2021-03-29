@@ -1,11 +1,17 @@
 #!/bin/bash
 set -euo pipefail
+
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+ASSET_DIR="${HOME}/lokomotive/lokoctl-assets"
+source "${SCRIPTFOLDER}"/common.sh
+
 USE_STDIN=${USE_STDIN:-"1"}
 USE_TTY=${USE_TTY:-"1"}
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-  echo "Usage: $0 domain|primary-mac|bmc-mac [ipmitool commands]"
-  echo "If no command is given, defaults to \"sol activate\" for attaching the serial console"
-  echo "This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed"
+  echo "Usage: $0 domain|primary-mac|bmc-mac diag|[ipmitool commands]"
+  echo "If no command is given, defaults to \"sol activate\" for attaching the serial console."
+  echo "The \"diag\" command shows the BMC MAC address, BMC IP address, and the IPMI \"chassis status\" output."
+  echo "This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed."
   exit 1
 fi
 if [ $# -gt 1 ]; then
@@ -13,16 +19,15 @@ if [ $# -gt 1 ]; then
 else
   CMD="sol activate"
 fi
+
 NODE="$1"
 if [[ "${NODE}" != *:* ]]; then
-  NODE="$(jq -r .selector.mac /opt/racker-state/matchbox/groups/install*"${NODE}".json)"
+  NODE="$(get_node_mac "${NODE}")"
   if [[ "${NODE}" != *:* ]]; then
-    echo "could not find MAC for $1"
+    echo "could not find MAC address for $1"
     exit 1
   fi
 fi
-
-SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
 
 if [ "${USE_STDIN}" = 1 ] || [ "${USE_TTY}" = 1 ]; then
   ARGS="-"
@@ -35,9 +40,9 @@ if [ "${USE_STDIN}" = 1 ] || [ "${USE_TTY}" = 1 ]; then
 else
   ARGS=""
 fi
-BMC=$(grep -m 1 "${NODE}" /usr/share/oem/nodes.csv | cut -d , -f 2) # may contain whitespace, thus check for : and don't use quoted
+BMC=$({ grep -m 1 "${NODE}" /usr/share/oem/nodes.csv || true ; } | cut -d , -f 2 | xargs) # remove whitespace through xargs
 if [[ "${BMC}" != *:* ]]; then
-  echo "could not find BMC MAC for $1 using ${NODE}"
+  echo "Could not find BMC MAC address for $1 by searching for ${NODE}"
   exit 1
 fi
 PXE_INTERFACE="$("${SCRIPTFOLDER}"/get-pxe-interface.sh)"
@@ -49,10 +54,49 @@ RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then
   RACKER_VERSION="latest"
 fi
-IP_ADDR="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $BMC --interface ${PXE_INTERFACE} | grep -m 1 $BMC | cut -f 1")"
+IP_ADDR="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $BMC --interface ${PXE_INTERFACE} | { grep -m 1 $BMC || true ; } | cut -f 1")"
+if [ "${IP_ADDR}" = "" ]; then
+  echo "Error getting BMC IP address for ${BMC} via ${PXE_INTERFACE}"
+  exit 1
+fi
+IP_ADDR_EXPECTED="$({ grep -m 1 "${BMC}" /opt/racker-state/dnsmasq/dnsmasq.conf || true ; } | cut -d = -f 2 | cut -d , -f 2)"
+if [ "${IP_ADDR}" != "${IP_ADDR_EXPECTED}" ]; then
+  echo "Warning: BMC IP address does not match the static IP address set up with dnsmasq, expected \"${IP_ADDR_EXPECTED}\""
+fi
+ROUTE="$(ip route get "${IP_ADDR}" | { grep -o -P ' dev .*? ' || true ; } | cut -d ' ' -f 3)"
+if [ "${ROUTE}" != "${PXE_INTERFACE}" ]; then
+  echo "Error checking routing rule for BMC IP address ${IP_ADDR} to go via \"${PXE_INTERFACE}\", got unexpected interface \"${ROUTE}\""
+  echo "In case you changed the internal subnet, wait until the BMCs got their new IP addresses via DHCP or force a renewal by power-cycling the whole rack."
+  exit 1
+fi
 IPMI_USER=$(cat /usr/share/oem/ipmi_user)
 IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
 if [ "${CMD}" = "sol activate" ]; then
   echo "Opening serial console, detach with ~~. (double ~ because you need to escape the ~ when already using SSH or a serial console, with two SSH connections it would be ~~~.)"
+fi
+if [ "${CMD}" = "diag" ]; then
+  NODE_MAC_ADDR=$({ grep -m 1 "${BMC}" /usr/share/oem/nodes.csv || true ; } | cut -d , -f 1 | xargs)
+  if [[ "${NODE_MAC_ADDR}" != *:* ]]; then
+    echo "Could not find node MAC address for by searching for BMC MAC address ${BMC}"
+    exit 1
+  fi
+  IP_ADDR_INTERNAL="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T ${NODE_MAC_ADDR} --interface ${PXE_INTERFACE} | { grep -m 1 ${NODE_MAC_ADDR} || true ; } | cut -f 1")"
+  IP_ADDR_INTERNAL_EXPECTED=$({ grep -m 1 "${NODE_MAC_ADDR}" /opt/racker-state/dnsmasq/dnsmasq.conf || true ; } | cut -d = -f 2 | cut -d , -f 2)
+  if [ "${IP_ADDR_INTERNAL}" != "${IP_ADDR_INTERNAL_EXPECTED}" ]; then
+    echo "Warning: Internal IP address does not match the static IP address set up with dnsmasq and Ignition, expected \"${IP_ADDR_INTERNAL_EXPECTED}\""
+  fi
+  if [ "${IP_ADDR_INTERNAL_EXPECTED}" != "" ]; then
+    HOST_INTERNAL=$({ grep "${IP_ADDR_INTERNAL_EXPECTED} " /etc/hosts || true ; } | cut -d ' ' -f 2- | tr '\n' ' ' | xargs) # extra trailing space is intentional to not match an address prefix
+  else
+    HOST_INTERNAL=""
+  fi
+  echo "BMC MAC address: ${BMC}"
+  echo "BMC IP address: ${IP_ADDR}"
+  echo "Node MAC address: ${NODE_MAC_ADDR}"
+  echo "Internal IP address: ${IP_ADDR_INTERNAL}"
+  echo "Internal host name: ${HOST_INTERNAL}"
+  CMD="chassis status"
+  docker run --privileged --net host --rm ${ARGS} quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H "${IP_ADDR}" -U "${IPMI_USER}" -P "${IPMI_PASSWORD}" ${CMD}
+  CMD="chassis bootparam get 5"
 fi
 docker run --privileged --net host --rm ${ARGS} quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H "${IP_ADDR}" -U "${IPMI_USER}" -P "${IPMI_PASSWORD}" ${CMD}
