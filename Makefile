@@ -6,6 +6,7 @@ installer/build: installer/build.go
 
 .PHONY: image
 image: installer/build
+	docker pull debian:stable-slim
 	rm -f installer/racker.tar.gz
 	cd installer/ && ./build -force
 
