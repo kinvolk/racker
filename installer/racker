@@ -48,13 +48,15 @@ pull_n_run_racker() {
 usage() {
   declare -A args=(
     ["bootstrap -- [-provision (flatcar|lokomotive)] [-h] ..."]="guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
+    ["status"]="show a summary of the cluster"
     ["update"]="install updates for the current racker version"
     ["upgrade"]="migrate to a newer racker version"
     ["get VERSION"]="install a particular racker version"
     ["factory"]="preparation procedure to configure the hardware"
     ["version"]="print racker version"
+    ["--full"]="status: print the details for all servers"
     ["--exclude='MAC...'"]="bootstrap: exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
-    ["--onfailure=(ask|retry|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
+    ["--onfailure=(ask|retry|exclude|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
     ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
     ["-h/--help"]="show usage"
   )
@@ -68,11 +70,15 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o he:o:r: -l help,exclude:,onfailure:,retries: -- "$@")
+ARGS=$(getopt -n "$0" -o he:o:r: -l full,help,exclude:,onfailure:,retries: -- "$@")
 eval set -- "$ARGS"
 
 while true; do
   case "${1:-}" in
+    --full)
+      STATUS_ARG="--full"
+      shift
+      ;;
     -h|--help)
       usage
       ;;
@@ -121,6 +127,8 @@ elif [ "$1" = factory ]; then
   # TODO: guide through /usr/share/oem/ metadata setup
   # Delete the version flag file to force an update on the first run
   sudo rm -f /opt/racker/RACKER_VERSION
+elif [ "$1" = status ]; then
+  /opt/racker/bootstrap/status.sh ${STATUS_ARG:-}
 elif [ "$1" = bootstrap ]; then
   if [ ! -f /opt/racker/RACKER_VERSION ]; then
     echo "Initial run, updating to the latest version"

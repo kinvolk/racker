@@ -17,7 +17,7 @@ BASE_URL=https://$CHANNEL.release.flatcar-linux.net/amd64-usr/$VERSION
 
 # check channel/version exist based on the header response
 if ! curl -s -I "${BASE_URL}/flatcar_production_pxe.vmlinuz" | grep -q -E '^HTTP/[0-9.]+ [23][0-9][0-9]'; then
-  echo "Channel or Version not found"
+  echo "Channel or Version not found" > /dev/stderr
   exit 1
 fi
 
@@ -31,7 +31,7 @@ if [[ -n "${OEM_ID}" ]]; then
 
   # check if the oem version exists based on the header response
   if ! curl -s -I "${BASE_URL}/${IMAGE_NAME}" | grep -q -E '^HTTP/[0-9.]+ [23][0-9][0-9]'; then
-    echo "OEM version not found"
+    echo "OEM version not found" > /dev/stderr
     exit 1
   fi
 fi

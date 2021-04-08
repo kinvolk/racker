@@ -17,7 +17,7 @@
 set -euo pipefail
 
 PROVISION_TYPE=${PROVISION_TYPE:-"lokomotive"}
-ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "cancel"
+ONFAILURE=${ONFAILURE:-"ask"} # what to do on a provisioning failure, current choices: "ask", "retry", "exclude", "cancel"
 RETRIES=${RETRIES:-"3"} # maximal retries if ONFAILURE=retry
 CLUSTER_NAME=${CLUSTER_NAME:-"lokomotive"}
 CLUSTER_DIR="$PWD"
@@ -61,6 +61,8 @@ fi
 
 SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
 
+source "${SCRIPTFOLDER}"/common.sh
+
 if [[ "${EUID}" -eq 0 ]]; then
   echo "Please do not run as root, sudo will be used where necessary"
   exit 1
@@ -73,6 +75,7 @@ fi
 
 function cancel() {
   echo "Canceling"
+  kill 0
   exit 1
 }
 trap cancel INT
@@ -124,7 +127,7 @@ else
     exit 1
   fi
   # Skip header line, filter out the management node itself and sort by MAC address
-  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address) | sort)"
+  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | { grep -v -f <(cat /sys/class/net/*/address) || true ; } | sort)"
   FULL_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 1)) # sorted MAC addresses will be used to assign the IP addresses
   FULL_BMC_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 2))
   if [ "${#EXCLUDE_NODES[*]}" != 0 ]; then
@@ -221,7 +224,7 @@ function create_network() {
     sudo iptables -t nat -A POSTROUTING -o $(ip route get 1 | grep -o -P ' dev .*? ' | cut -d ' ' -f 3) -j MASQUERADE
 
   else
-    sudo tee /etc/systemd/network/10-pxe.network <<-EOF
+    sudo tee /etc/systemd/network/10-pxe.network >/dev/null <<-EOF
 	[Match]
 	Name=${PXE_INTERFACE}
 	[Link]
@@ -242,13 +245,12 @@ EOF
 function create_certs() {
   local server_dir="/opt/racker-state/matchbox/certs"
   local cert_dir="/opt/racker-state/matchbox-client"
+  local err_output=""
   tmp_dir=$(mktemp -d -t certs-XXXXXXXXXX)
   pushd "$tmp_dir" 1>/dev/null
 
-  echo "Generating certificates. Check scripts/tls/cert-gen.log for details"
-
   export SAN="IP.1:$(get_matchbox_ip_addr)"
-  "$SCRIPTFOLDER/scripts/tls/cert-gen"
+  err_output=$("$SCRIPTFOLDER/scripts/tls/cert-gen" 2>&1) || { echo "${err_output}" ; exit 1; }
 
   sudo mkdir -p "${server_dir}"
   sudo chown -R $USER:$USER "${server_dir}"
@@ -286,22 +288,22 @@ function get_assets() {
 
     # Skip download if available version is same as upstream version
     if [[ "${AVAILABLE_FLATCAR_VERSION}" == "${EXISTING_FLATCAR_VERSION}" ]]; then
-      echo "Skipping download of Flatcar Linux assets, since downloaded version is up to date"
+      echo "Skipping download of Flatcar Linux assets, since downloaded version is up to date" >/dev/null
       return
     fi
   fi
 
-  "$SCRIPTFOLDER/scripts/get-flatcar" stable current "${DOWNLOAD_DIR}"
+  "$SCRIPTFOLDER/scripts/get-flatcar" stable current "${DOWNLOAD_DIR}" >/dev/null
 }
 
 function destroy_containers() {
-  docker stop matchbox || true
-  docker rm matchbox || true
-
-  sudo docker stop dnsmasq || true
-  sudo docker rm dnsmasq || true
-
   if [ -n "$USE_QEMU" ]; then
+    docker stop matchbox || true
+    docker rm matchbox || true
+
+    sudo docker stop dnsmasq || true
+    sudo docker rm dnsmasq || true
+
     sudo docker stop dnsmasq-external || true
     sudo docker rm dnsmasq-external || true
   fi
@@ -354,7 +356,7 @@ function create_containers() {
     MATCHBOX_CMD="$(grep -m 1 "ExecStartPre=docker run" "${SCRIPTFOLDER}/matchbox.service" | cut -d = -f 2- | sed "s/\${MATCHBOX_IP_ADDR}/$(get_matchbox_ip_addr)/g")"
     ${MATCHBOX_CMD}
   else
-    sudo tee /opt/racker-state/matchbox-service <<-EOF
+    sudo tee /opt/racker-state/matchbox-service >/dev/null <<-EOF
 	MATCHBOX_IP_ADDR="$(get_matchbox_ip_addr)"
 EOF
     # systemctl daemon-reload is not needed because we only change the env file
@@ -450,7 +452,7 @@ function add_to_etc_hosts() {
   local ip_addr="$1"
   local names="$2"
   sudo sed -i "/.*${names}/d" /etc/hosts
-  echo "${ip_addr} ${names}" | sudo tee -a /etc/hosts
+  echo "${ip_addr} ${names}" | sudo tee -a /etc/hosts >/dev/null
 }
 
 function create_backup_credentials() {
@@ -489,7 +491,7 @@ function gen_cluster_vars() {
       sudo sed -i "/${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}/d" /etc/hosts
       controller_hosts+="          $(calc_ip_addr $mac) ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-controller-${j}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME}\n"
       # special case not covered by add_to_etc_hosts function
-      echo "$(calc_ip_addr $mac)" "${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}" | sudo tee -a /etc/hosts
+      echo "$(calc_ip_addr $mac)" "${CLUSTER_NAME}.${KUBERNETES_DOMAIN_NAME} ${CLUSTER_NAME}-etcd${j}.${KUBERNETES_DOMAIN_NAME}" | sudo tee -a /etc/hosts >/dev/null
       let j+=1
     done
     # initialize the variable for Lokomotive to use controller_* variables while plain Flatcar only uses the worker_* variables
@@ -526,7 +528,7 @@ function gen_cluster_vars() {
         gateway="${unpacked[2]}"
         dns="${unpacked[3]}"
         if [ "$(grep ${mac} /usr/share/oem/nodes.csv | grep ${secondary_mac})" != "" ]; then
-          tee -a "cl/${id}-custom.yaml" <<-EOF
+          tee -a "cl/${id}-custom.yaml" >/dev/null <<-EOF
 	networkd:
 	  units:
 	    - name: 10-public-stable.network
@@ -565,7 +567,7 @@ EOF
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
   # which would be a Terraform variable).
   if [ "$type" = "lokomotive" ]; then
-    tee lokocfg.vars <<-EOF
+    tee lokocfg.vars >/dev/null <<-EOF
 	cluster_name = "${CLUSTER_NAME}"
 	asset_dir = "${ASSET_DIR}"
 	k8s_domain_name = "${KUBERNETES_DOMAIN_NAME}"
@@ -579,7 +581,7 @@ EOF
 EOF
   variable_file="lokocfg.vars"
   else
-    tee terraform.tfvars <<-EOF
+    tee terraform.tfvars >/dev/null <<-EOF
 	asset_dir = "${FLATCAR_ASSETS_DIR}"
 	node_macs = ${worker_macs}
 	node_names = ${worker_names}
@@ -590,7 +592,7 @@ EOF
   variable_file="terraform.tfvars"
   fi
   if [ -n "$USE_QEMU" ]; then
-    tee -a "${variable_file}" <<-EOF
+    tee -a "${variable_file}" >/dev/null <<-EOF
 	kernel_console = []
 	install_pre_reboot_cmds = ""
 	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
@@ -598,7 +600,7 @@ EOF
   else
     # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
     # The "ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00" command can be replaced with "ipmitool chassis bootdev disk options=persistent,efiboot" once a new IPMI tool version is released
-    tee -a "${variable_file}" <<-EOF
+    tee -a "${variable_file}" >/dev/null <<-EOF
 	kernel_console = ["console=ttyS1,57600n8", "earlyprintk=serial,ttyS1,57600n8"]
 	install_pre_reboot_cmds = "docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'"
 	pxe_commands = "${SCRIPTFOLDER}/pxe-boot.sh \$mac \$domain"
@@ -614,7 +616,7 @@ EOF
 
     if [ "$USE_VELERO" = "true" ]; then
       create_backup_credentials
-      tee -a lokocfg.vars <<-EOF
+      tee -a lokocfg.vars >/dev/null <<-EOF
 	backup_name = "${BACKUP_NAME}"
 	backup_s3_bucket_name = "${BACKUP_S3_BUCKET_NAME}"
 	backup_aws_region = "${BACKUP_AWS_REGION}"
@@ -627,6 +629,45 @@ EOF
     copy_script flatcar/variables.tf
     copy_script flatcar/versions.tf
     copy_script flatcar/flatcar.tf
+  fi
+}
+
+function bmc_check() {
+  local report=""
+  errors=""
+  error_macs=() # does not work when marked local
+  local found=0
+  local all=${#MAC_ADDRESS_LIST[*]}
+  local ellipsis=1
+  if [ -z "$USE_QEMU" ]; then
+    echo # allocate one line (because we have one line of output) in advance to not hit the scroll buffer
+    tput cuu 1 # and go back that line
+    tput sc
+    for mac in ${MAC_ADDRESS_LIST[*]}; do
+      tput rc
+      tput ed
+      ELLIPSIS=$(printf '.%.0s' $(seq ${ellipsis}))
+      echo "➤ Checking BMC connectivity (${found}/${all})${ELLIPSIS}"
+      report=$("${SCRIPTFOLDER}"/ipmi "${mac}" diag 2>&1) && let found+=1 || {
+        errors+="Error while checking BMC connectivity for ${mac}:"$'\n'"${report}"
+        error_macs+=("${mac}")
+      }
+      let ellipsis+=1
+      if [ ${ellipsis} -gt 3 ]; then
+        ellipsis=1
+      fi
+    done
+    tput rc
+    tput ed
+    if [ "${found}" = "${all}" ]; then
+      echo "➤ Checking BMC connectivity (${found}/${all})... ✓ done"
+    else
+      echo "➤ Checking BMC connectivity (${found}/${all})... × failed"
+      echo "The following $(( all - found )) BMCs could not be reached:"
+      echo "${errors}"
+      echo "Please verify all servers are present and that the BMC DHCP assignment worked, or exclude their MAC addresses via the --exclude=\"${error_macs[@]}\" parameter."
+      exit 1
+    fi
   fi
 }
 
@@ -649,14 +690,182 @@ function error_guidance() {
   fi
 }
 
-function execute_with_retry() {
-  exec_command="$1"
-  tries=0
-  ret=0
+function show_progress() {
+  local STAGE="${STAGE-""}"
+  local FAILED="${FAILED-""}"
+  local ELLIPSIS="${ELLIPSIS-"..."}"
+  local found=0
+  local joined=0
+  local name=""
+  local names=""
+  local mac=""
+  local found_mac=""
+  local all=${#MAC_ADDRESS_LIST[*]}
+  if [ "${STAGE}" = "lokomotive-bringup" ] || [ "${STAGE}" = "flatcar-bringup" ] ; then
+    for mac in ${MAC_ADDRESS_LIST[*]}; do
+      if [ -f "${MAC_STATE}/${mac}" ]; then
+        let found+=1
+      fi
+    done
+    echo -n "➤ OS installation via PXE (${found}/${all})"
+    if [ "${found}" = "${all}" ]; then
+      echo "... ✓ done"
+      if [ "${STAGE}" = "lokomotive-bringup" ]; then
+      echo -n "➤ Kubernetes bring-up"
+        names="$(get_node_names)"
+        if [ "${FAILED}" = "0" ] || [ "${names}" != "" ]; then
+          echo "... ✓ done"
+          for name in ${names}; do
+            # Only count those that we know
+            found_mac="$(get_node_mac "${name}")"
+            if [ "${found_mac}" != "" ] && [ "$(echo "${MAC_ADDRESS_LIST[*]}" | { grep "${found_mac}" || true ; } )" != "" ]; then
+              let joined+=1
+            fi
+          done
+          echo -n "➤ Cluster health check (${joined}/${all} nodes seen)"
+          if [ "${FAILED}" = "0" ]; then
+            echo "... ✓ done"
+          elif [ "${FAILED}" = "" ]; then
+            echo "${ELLIPSIS}"
+          else
+            echo "... × failed"
+          fi
+        elif [ "${FAILED}" != "" ]; then
+          echo "... × failed"
+        else
+          echo "${ELLIPSIS}"
+        fi
+      fi
+    else
+      if [ "${FAILED}" = "" ]; then
+        echo "${ELLIPSIS}"
+      else
+        echo "... × failed"
+      fi
+    fi
+  elif [ "${STAGE}" = "lokomotive-components" ]; then
+    echo -n "➤ Lokomotive component installation"
+    if [ "${FAILED}" = "0" ]; then
+      echo "... ✓ done"
+    elif [ "${FAILED}" = "" ]; then
+      echo "${ELLIPSIS}"
+    else
+      echo "... × failed"
+    fi
+  else
+    true
+  fi
+}
 
-  $exec_command || ret=$?
+function execute_and_show_progress() {
+  local exec_command="$1"
+  LOGFILE="logs/$(date '+%Y-%m-%d_%H-%M-%S')" # global variable pointing to last log file
+  local ret=0
+  ellipsis=1
+  buffer=""
+  # simple IPC mechanism, create a file descriptor in this process, allowing subtasks to check for existance and run as long as it is there
+  exec {running_fd}>/dev/null
+  running="/proc/$$/fd/${running_fd}"
+  local lines_to_clear=5 # must match the maximum output of the show_progress function or be a bit longer for additional margin
+
+  mkdir -p logs
+  for x in $(seq ${lines_to_clear}); do
+    echo # allocate lines to clear in advance in case we would hit the scroll buffer otherwise
+  done
+  # go back the printed lines
+  tput cuu ${lines_to_clear}
+  # save cursor position
+  tput sc
+  {
+    # run as long as the file descriptor in the main process exists
+    while [ -e "${running}" ]; do
+      buffer=$(ELLIPSIS=$(printf '.%.0s' $(seq ${ellipsis})) show_progress)
+      # restore cursor position
+      tput rc
+      # clear display downwards
+      tput ed
+      echo "${buffer}"
+      sleep 1
+      let ellipsis+=1
+      if [ ${ellipsis} -gt 3 ]; then
+        ellipsis=1
+      fi
+    done
+  } &
+  if [ "${STAGE}" = "flatcar-bringup" ]; then
+    terraform plan -input=false &> "${LOGFILE}.plan" || true
+  fi
+  ${exec_command} &> "${LOGFILE}" || ret=$?
+  # close file descriptor to tell subtasks that they should stop
+  exec {running_fd}>&-
+  # wait for subtask to finish
+  wait
+  tput rc
+  tput ed
+  FAILED="${ret}" show_progress
+  return ${ret}
+}
+
+function execute_with_retry() {
+  local exec_command="$1"
+  local tries=0
+  local ret=0
+  local mac=""
+  local name=""
+  local names=""
+  local found_mac=""
+  local expected=""
+  local hint_msg=""
+  local exclude_opt=""
+  macs_to_skip=()
+
+  execute_and_show_progress "${exec_command}" || ret=$?
   while [ "${ret}" != 0 ]; do
-    if [ "${ONFAILURE}" = retry ]; then
+    macs_to_skip=() # reset after each run
+    if [ "${ret}" != "ask_again" ]; then
+      hint_msg="You can see logs in ${PWD}/${LOGFILE}, run 'ipmi <MAC|DOMAIN> diag' for a short overview of a node, connect to the serial console via 'ipmi <MAC|DOMAIN>', or try to connect via SSH." # reset after each run
+      if [ "${STAGE}" = "lokomotive-bringup" ] || [ "${STAGE}" = "flatcar-bringup" ] ; then
+        for mac in ${MAC_ADDRESS_LIST[*]}; do
+          if [ ! -f "${MAC_STATE}/${mac}" ]; then
+           macs_to_skip+=("${mac}")
+          fi
+        done
+        if [ "${#macs_to_skip[*]}" != 0 ]; then
+          echo "Failed to provision the following ${#macs_to_skip[*]} nodes:"
+          echo "${macs_to_skip[*]}"
+          echo "${hint_msg}"
+        else
+          if [ "${STAGE}" = "lokomotive-bringup" ]; then
+            names="$(get_node_names)"
+            if [ "${names}" != "" ]; then
+              expected="$(echo ${MAC_ADDRESS_LIST[*]} | tr ' ' '\n')"
+              for name in ${names}; do
+                found_mac="$(get_node_mac "${name}")"
+                if [ "${found_mac}" != "" ]; then
+                  expected=$(echo "${expected}" | { grep -v "${mac}" || true ; })
+                fi
+              done
+              macs_to_skip=(${expected})
+              if [ "${#macs_to_skip[*]}" != 0 ]; then
+                echo "Failed cluster health check because the following ${#macs_to_skip[*]} nodes did not join the cluster:"
+                echo "${macs_to_skip[*]}"
+                echo "${hint_msg}"
+              else
+                echo "Failed to complete cluster health check despite all nodes joining."
+                echo "${hint_msg}"
+              fi
+            else
+              echo "Failed to bring up Kubernetes API."
+              echo "${hint_msg}"
+            fi
+          fi
+        fi
+      elif [ "${STAGE}" = "lokomotive-components" ]; then
+        echo "Failed to apply the Lokomotive components on the cluster."
+        echo "${hint_msg}"
+      fi
+    fi
+    if [ "${ONFAILURE}" = retry ] || [ "${ONFAILURE}" = exclude ]; then
       CHOICE=r
       let tries+=1
       if [ "${tries}" -gt "${RETRIES}" ]; then
@@ -664,21 +873,42 @@ function execute_with_retry() {
         error_guidance
         exit ${ret}
       fi
-      echo "Something went wrong, retrying ${tries}/${RETRIES}"
+      if [ "${#macs_to_skip[*]}" != 0 ]; then
+        echo "Something went wrong, removing ${#macs_to_skip[*]} nodes from config and retrying ${tries}/${RETRIES}"
+        for mac in ${macs_to_skip[*]}; do
+          NODE_MAC_ADDR="${mac}" PROVISION_TYPE="${PROVISION_TYPE}" "${SCRIPTFOLDER}"/exclude.sh
+          MAC_ADDRESS_LIST=($(echo "${MAC_ADDRESS_LIST[*]}" | tr ' ' '\n' | grep -v "${mac}"))
+          # CONTROLLERS_(BMC_)MAC etc not updated here because they are not used at this point
+        done
+      else
+        echo "Something went wrong, retrying ${tries}/${RETRIES}"
+      fi
     elif [ "${ONFAILURE}" = cancel ]; then
       CHOICE=c
     else
-      read -p "[r]etry/[c]ancel (default retry): " CHOICE
+      exclude_opt=""
+      if [ "${#macs_to_skip[*]}" != 0 ]; then
+        exclude_opt=" [e]xclude nodes from cluster,"
+      fi
+      read -p "[r]etry,${exclude_opt} [c]ancel (default retry): " CHOICE
+      if [ "${CHOICE}" = "e" ] && [ "${#macs_to_skip[*]}" != 0 ]; then
+        for mac in ${macs_to_skip[*]}; do
+          NODE_MAC_ADDR="${mac}" PROVISION_TYPE="${PROVISION_TYPE}" "${SCRIPTFOLDER}"/exclude.sh
+          MAC_ADDRESS_LIST=($(echo "${MAC_ADDRESS_LIST[*]}" | tr ' ' '\n' | grep -v "${mac}"))
+          # CONTROLLERS_(BMC_)MAC etc not updated here because they are not used at this point
+        done
+        CHOICE="r"
+      fi
     fi
     if [ "${CHOICE}" = "" ] || [ "${CHOICE}" = "r" ]; then
       ret=0
-      $exec_command || ret=$?
+      execute_and_show_progress "${exec_command}" || ret=$?
     elif [ "${CHOICE}" = "c" ]; then
       echo "Canceling"
       error_guidance
       exit ${ret}
     else
-      ret=1
+      ret="ask_again"
       continue
     fi
   done
@@ -691,11 +921,13 @@ if [ "$1" = create ]; then
   create_certs
   create_ssh_key
   create_containers
+  bmc_check
   gen_cluster_vars "${PROVISION_TYPE}"
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
-    execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --confirm"
-    lokoctl component apply
+    MAC_STATE="${ASSET_DIR}/cluster-assets"
+    STAGE="lokomotive-bringup" execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --skip-control-plane-update --confirm"
+    STAGE="lokomotive-components" execute_with_retry "lokoctl component apply"
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
       ln -fs "${ASSET_DIR}/cluster-assets/auth/kubeconfig" ~/.kube/config
@@ -706,8 +938,9 @@ if [ "$1" = create ]; then
     echo "  cd lokomotive; lokoctl cluster|component apply"
   else
     mkdir "${FLATCAR_ASSETS_DIR}"
-    execute_with_retry "terraform init"
-    execute_with_retry "terraform apply --auto-approve -parallelism=100"
+    MAC_STATE="${FLATCAR_ASSETS_DIR}"
+    STAGE="flatcar-init" execute_with_retry "terraform init -input=false"
+    STAGE="flatcar-bringup" execute_with_retry "terraform apply --auto-approve -input=false -parallelism=100"
     echo "The nodes are provisioned with a minimal Ignition configuration (see the Container Linux Config files in flatcar-container-linux/cl/)."
     echo "Running the racker bootstrap command is not needed anymore if you want to change something."
     echo "To modify the settings you can now directly change the flatcar-container-linux/flatcar.tf config file"
