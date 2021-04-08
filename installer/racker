@@ -152,7 +152,9 @@ elif [ "$1" = bootstrap ]; then
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
 
+  set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
   args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${ARGS[@]::2}"
+  set -u
 
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
@@ -233,7 +235,11 @@ elif [ "$1" = bootstrap ]; then
 
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
+
+  set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
   TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
+  set -u
+
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
     exit 0
