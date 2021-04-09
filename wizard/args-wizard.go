@@ -49,8 +49,9 @@ type ArgOption struct {
 }
 
 type Flag struct {
-	Skip bool   `yaml:",omitempty"`
-	Help string `yaml:",omitempty"`
+	Skip         bool   `yaml:",omitempty"`
+	Help         string `yaml:",omitempty"`
+	AllowPrompts bool   `yaml:"allow-other-prompts,omitempty"`
 }
 
 type Arg struct {
@@ -182,6 +183,17 @@ func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, er
 	return s, nil
 }
 
+func isFlagSet(flagSet *flag.FlagSet, flagName string) bool {
+	isSet := false
+	flagSet.Visit(func(f *flag.Flag) {
+		if f.Name == flagName {
+			isSet = true
+		}
+	})
+
+	return isSet
+}
+
 func main() {
 	ownFlags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	confFilePath := ownFlags.String("config", "./args.yaml", "path to the configuration file")
@@ -278,6 +290,8 @@ func main() {
 		argsMap[arg.Name] = &a
 	}
 
+	promptMode := true
+
 	if len(secondArgs) > 0 {
 		if err = flags.Parse(secondArgs); err != nil {
 			flags.PrintDefaults()
@@ -289,6 +303,13 @@ func main() {
 
 			if q.Arg.Flag.Skip {
 				continue
+			}
+
+			// Some flags may be used while still letting prompts
+			// be shown to the user, but by default the use of a flag
+			// enfoces the flag-mode.
+			if isFlagSet(flags, q.Arg.Name) && !q.Arg.Flag.AllowPrompts {
+				promptMode = false
 			}
 
 			resultVar := q.Arg.Var
@@ -319,7 +340,9 @@ func main() {
 			results[argsMap[argName].Arg.Var] = s
 		}
 
-	} else {
+	}
+
+	if promptMode {
 		arg := firstQuestion
 		for arg != nil {
 			q := survey.Question{
