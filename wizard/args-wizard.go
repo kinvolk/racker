@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"gopkg.in/yaml.v2"
@@ -62,6 +63,7 @@ type Arg struct {
 	Flag    Flag        `yaml:",omitempty"`
 	Options []ArgOption `yaml:",omitempty"`
 	Help    string      `yaml:",omitempty"`
+	Ignore  bool        `yaml:",omitempty"`
 }
 
 type ArgQuestion struct {
@@ -183,6 +185,39 @@ func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, er
 	return s, nil
 }
 
+func cleanArgs(args []string, argsToIgnore map[string]bool) []string {
+	var cleanedArgs []string
+	if len(argsToIgnore) == 0 {
+		return args
+	}
+
+	i := 0
+	for i < len(args) {
+		flag := args[i]
+		flagSplit := strings.Split(flag, "=")
+		flag = flagSplit[0]
+		flagUsesEqual := len(flagSplit) > 1
+
+		i++
+
+		if !argsToIgnore[strings.TrimPrefix(flag, "-")] {
+			cleanedArgs = append(cleanedArgs, flag)
+			if flagUsesEqual {
+				cleanedArgs = append(cleanedArgs, flagSplit[1])
+			} else if i < len(args) {
+				// Add positional argument
+				cleanedArgs = append(cleanedArgs, args[i])
+			}
+		}
+
+		// Jump to after the positional argument.
+		if !flagUsesEqual {
+			i++
+		}
+	}
+	return cleanedArgs
+}
+
 func isFlagSet(flagSet *flag.FlagSet, flagName string) bool {
 	isSet := false
 	flagSet.Visit(func(f *flag.Flag) {
@@ -219,6 +254,7 @@ func main() {
 
 	argsMap := make(map[string]*ArgQuestion)
 	answers := make(map[string]interface{})
+	ignoredArgs := make(map[string]bool)
 	results := make(map[string]string)
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
@@ -227,6 +263,11 @@ func main() {
 	var lastQuestion *ArgQuestion
 
 	for _, arg := range c.Args {
+		if arg.Ignore {
+			ignoredArgs[arg.Name] = true
+			continue
+		}
+
 		var p survey.Prompt
 
 		help := arg.Prompt.Help
@@ -289,6 +330,8 @@ func main() {
 
 		argsMap[arg.Name] = &a
 	}
+
+	secondArgs = cleanArgs(secondArgs, ignoredArgs)
 
 	promptMode := true
 
