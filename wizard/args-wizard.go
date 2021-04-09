@@ -267,7 +267,7 @@ func main() {
 		}
 
 		a := ArgQuestion{arg, &p, nil}
-		if firstQuestion == nil {
+		if firstQuestion == nil && !a.Arg.Prompt.Skip {
 			firstQuestion = &a
 			lastQuestion = &a
 		} else if !a.Arg.Prompt.Skip {
