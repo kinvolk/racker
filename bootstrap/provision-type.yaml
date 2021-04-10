@@ -1,4 +1,32 @@
 args:
+- name: onfailure
+  var: ON_FAILURE
+  default: ask
+  help: "behavior on provisioning failure; options are: ask|retry|exclude|cancel."
+  flag:
+    allow-other-prompts: true
+  options:
+  - ask
+  - retry
+  - exclude
+  - cancel
+  prompt:
+    skip: true
+- name: retries
+  var: RETRIES
+  default: 3
+  help: "if -onfailure=retry or -onfailure=exclude is set, the number of retries before giving up"
+  flag:
+    allow-other-prompts: true
+  prompt:
+    skip: true
+- name: exclude
+  var: EXCLUDE_NODES
+  help: "exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
+  flag:
+    allow-other-prompts: true
+  prompt:
+    skip: true
 - name: provision
   var: PROVISION_TYPE
   default: lokomotive

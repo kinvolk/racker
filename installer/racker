@@ -55,9 +55,6 @@ usage() {
     ["factory"]="preparation procedure to configure the hardware"
     ["version"]="print racker version"
     ["--full"]="status: print the details for all servers"
-    ["--exclude='MAC...'"]="bootstrap: exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
-    ["--onfailure=(ask|retry|exclude|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
-    ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
     ["-h/--help"]="show usage"
   )
 
@@ -70,7 +67,7 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o he:o:r: -l full,help,exclude:,onfailure:,retries: -- "$@")
+ARGS=$(getopt -n "$0" -o h -l full,help -- "$@")
 eval set -- "$ARGS"
 
 while true; do
@@ -81,21 +78,6 @@ while true; do
       ;;
     -h|--help)
       usage
-      ;;
-    --exclude)
-      shift
-      export EXCLUDE_NODES="$1"
-      shift
-      ;;
-    --onfailure)
-      shift
-      export ONFAILURE=$1
-      shift
-      ;;
-    --retries)
-      shift
-      export RETRIES=$1
-      shift
       ;;
     --)
       shift
@@ -139,15 +121,6 @@ elif [ "$1" = bootstrap ]; then
   # Discard the bootstrap as first arg
   declare -a ARGS
   ARGS=("${@:2}")
-  if [ ${#ARGS[*]} -gt 1 ]; then
-    # Split the first arg if it has an = sign, so we can just then use this one
-    # for the first wizard, and the rest for the flatcar/lokomotive wizards.
-    declare -a first_arg
-    first_arg=("$(echo ${ARGS[0]}|tr '=' ' ')")
-    len_first_arg=${#first_arg[@]}
-    rest_args=("${ARGS[@]:$len_first_arg}")
-    ARGS=("${first_arg[@]}" "${rest_args[@]}")
-  fi
 
   node_list="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address))"
   # Find the list of available node types, excluding the management node
@@ -161,7 +134,7 @@ elif [ "$1" = bootstrap ]; then
   ARGS_FILE="$(mktemp)"
 
   set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
-  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${ARGS[@]::2}"
+  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${ARGS[@]}"
   set -u
 
   # Exit on -h
@@ -245,7 +218,7 @@ elif [ "$1" = bootstrap ]; then
   mkdir -p $EDITOR_TMP
 
   set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]}"
   set -u
 
   # Exit on -h
