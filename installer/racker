@@ -46,23 +46,23 @@ pull_n_run_racker() {
 }
 
 usage() {
-  declare -A args=(
-    ["bootstrap -- [-provision (flatcar|lokomotive)] [-h] ..."]="guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
-    ["status"]="show a summary of the cluster"
-    ["update"]="install updates for the current racker version"
-    ["upgrade"]="migrate to a newer racker version"
-    ["get VERSION"]="install a particular racker version"
-    ["factory"]="preparation procedure to configure the hardware"
-    ["version"]="print racker version"
-    ["--full"]="status: print the details for all servers"
-    ["-h/--help"]="show usage"
+  args=(
+    "bootstrap [-h] ... : guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
+    "status [-full]: show a summary of the cluster (use --full to print the details for all servers)"
+    "update: install updates for the current racker version"
+    "upgrade: migrate to a newer racker version"
+    "get VERSION: install a particular racker version"
+    "factory: preparation procedure to configure the hardware"
+    "version: print racker version"
+    "help: show usage"
   )
 
   echo "Usage: $0 COMMAND"
   echo "Commands:"
-  for arg in "${!args[@]}"; do
+  for i in "${args[@]}"; do
+    IFS=':' read arg desc <<< "${i}"
     printf " %-20s: " "$arg"
-    echo ${args["$arg"]}
+    echo "${desc}"
   done
   exit 1
 }
