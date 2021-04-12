@@ -1,3 +1,4 @@
+ignore-unknown-flags: true
 args:
 - name: onfailure
   var: ON_FAILURE
