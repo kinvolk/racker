@@ -67,36 +67,11 @@ usage() {
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o h -l full,help -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "${1:-}" in
-    --full)
-      STATUS_ARG="--full"
-      shift
-      ;;
-    -h|--help)
-      usage
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      echo "error: Unrecognized option \"$1\"" >&2
-      exit 1
-      ;;
-  esac
-done
-
-if [ $# -lt 1 ]; then
+if [ $# -lt 1 ] || [ "$1" = "" ] || [ "$1" = "help" ]; then
     usage
 fi
 
-if [ "$1" = "" ]; then
-  usage
-elif [ "$1" = update ]; then
+if [ "$1" = update ]; then
   pull_n_run_racker $IMAGE $VERSION
 elif [ "$1" = upgrade ]; then
   pull_n_run_racker $IMAGE "latest"
@@ -110,6 +85,9 @@ elif [ "$1" = factory ]; then
   # Delete the version flag file to force an update on the first run
   sudo rm -f /opt/racker/RACKER_VERSION
 elif [ "$1" = status ]; then
+  if [ "${2:-}" = "-full" ]; then
+    STATUS_ARG="--full"
+  fi
   /opt/racker/bootstrap/status.sh ${STATUS_ARG:-}
 elif [ "$1" = bootstrap ]; then
   if [ ! -f /opt/racker/RACKER_VERSION ]; then
