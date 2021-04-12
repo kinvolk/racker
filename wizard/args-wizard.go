@@ -73,7 +73,8 @@ type ArgQuestion struct {
 }
 
 type ArgsWizardConf struct {
-	Args []Arg `yaml:",omitempty"`
+	IgnoreUnknownFlags bool  `yaml:"ignore-unknown-flags,omitempty"`
+	Args               []Arg `yaml:",omitempty"`
 }
 
 func (o *ArgOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -185,11 +186,23 @@ func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, er
 	return s, nil
 }
 
-func cleanArgs(args []string, argsToIgnore map[string]bool) []string {
-	var cleanedArgs []string
-	if len(argsToIgnore) == 0 {
-		return args
+func cleanArgs(args []string, c ArgsWizardConf) []string {
+	argsToIgnore := make(map[string]bool)
+	knownArgs := make(map[string]bool)
+
+	for _, arg := range c.Args {
+		if arg.Ignore {
+			argsToIgnore[arg.Name] = true
+			continue
+		}
+		knownArgs[arg.Name] = true
 	}
+
+	shouldIgnore := func(arg string) bool {
+		return argsToIgnore[arg] || (c.IgnoreUnknownFlags && !knownArgs[arg])
+	}
+
+	var cleanedArgs []string
 
 	i := 0
 	for i < len(args) {
@@ -200,7 +213,7 @@ func cleanArgs(args []string, argsToIgnore map[string]bool) []string {
 
 		i++
 
-		if !argsToIgnore[strings.TrimPrefix(flag, "-")] {
+		if !shouldIgnore(strings.TrimPrefix(flag, "-")) {
 			cleanedArgs = append(cleanedArgs, flag)
 			if flagUsesEqual {
 				cleanedArgs = append(cleanedArgs, flagSplit[1])
@@ -254,7 +267,6 @@ func main() {
 
 	argsMap := make(map[string]*ArgQuestion)
 	answers := make(map[string]interface{})
-	ignoredArgs := make(map[string]bool)
 	results := make(map[string]string)
 
 	flags := flag.NewFlagSet("", flag.ExitOnError)
@@ -264,7 +276,6 @@ func main() {
 
 	for _, arg := range c.Args {
 		if arg.Ignore {
-			ignoredArgs[arg.Name] = true
 			continue
 		}
 
@@ -331,7 +342,7 @@ func main() {
 		argsMap[arg.Name] = &a
 	}
 
-	secondArgs = cleanArgs(secondArgs, ignoredArgs)
+	secondArgs = cleanArgs(secondArgs, c)
 
 	promptMode := true
 
