@@ -45,9 +45,16 @@ pull_n_run_racker() {
   run_racker $1 $2
 }
 
+is_help_arg() {
+  if [ "$1" = "-h" ] || [ "$1" = "-help" ]; then
+    return 0
+  fi
+  return 1
+}
+
 usage() {
   args=(
-    "bootstrap [-h] ... : guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
+    "bootstrap [-provision (flatcar|lokomotive)] [-h] ... : guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
     "status [-full]: show a summary of the cluster (use --full to print the details for all servers)"
     "update: install updates for the current racker version"
     "upgrade: migrate to a newer racker version"
@@ -110,6 +117,11 @@ elif [ "$1" = bootstrap ]; then
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
 
+  if is_help_arg "${1:-}"; then
+    args-wizard -show-help -config /opt/racker/bootstrap/provision-type.yaml
+    exit 0
+  fi
+
   args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "$@"
 
   # Exit on -h
@@ -121,9 +133,17 @@ elif [ "$1" = bootstrap ]; then
   . $ARGS_FILE
   set +a
 
-  if [ ${#ARGS[*]} -gt 2 ] && { [ "${ARGS[2]}" = "-h" ] || [ "${ARGS[2]}" = "--help" ]; }; then
-    true # the user just shows the help for the given provision type
-  else
+  # We need to check here if the help argument has been used because
+  # we need to ignore the cluster directory checks depending on it.
+  using_help_arg=false
+  for i in "$@"; do
+    if is_help_arg "$i"; then
+      using_help_arg=true
+      break
+    fi
+  done
+
+  if ! $using_help_arg; then
     # any existing directory needs to be removed first (and both directories can't coexist)
     LOKOMOTIVE_DIR="$HOME/lokomotive"
     FLATCAR_DIR="$HOME/flatcar-container-linux"
