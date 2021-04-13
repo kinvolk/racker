@@ -245,6 +245,7 @@ func isFlagSet(flagSet *flag.FlagSet, flagName string) bool {
 func main() {
 	ownFlags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	confFilePath := ownFlags.String("config", "./args.yaml", "path to the configuration file")
+	showHelp := ownFlags.Bool("show-help", false, "show the help/usage associated with the given configuration")
 
 	ownArgs, secondArgs := divideArgs(os.Args[1:])
 
@@ -340,6 +341,11 @@ func main() {
 		}
 
 		argsMap[arg.Name] = &a
+	}
+
+	if *showHelp {
+		flags.PrintDefaults()
+		os.Exit(0)
 	}
 
 	secondArgs = cleanArgs(secondArgs, c)
