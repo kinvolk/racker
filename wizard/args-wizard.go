@@ -358,7 +358,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		for _, q := range(argsMap) {
+		for _, q := range argsMap {
 			argName := q.Arg.Name
 
 			if q.Arg.Flag.Skip {
