@@ -94,9 +94,8 @@ elif [ "$1" = get ]; then
 elif [ "$1" = version ]; then
   echo $VERSION
 elif [ "$1" = factory ]; then
-  # TODO: guide through /usr/share/oem/ metadata setup
-  # Delete the version flag file to force an update on the first run
-  sudo rm -f /opt/racker/RACKER_VERSION
+  shift
+  /opt/racker/bootstrap/racker-factory.sh "$@"
 elif [ "$1" = status ]; then
   if [ "${2:-}" = "-full" ]; then
     STATUS_ARG="--full"
