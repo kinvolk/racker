@@ -82,6 +82,12 @@ if [ "$1" = update ]; then
   pull_n_run_racker $IMAGE $VERSION
 elif [ "$1" = upgrade ]; then
   pull_n_run_racker $IMAGE "latest"
+  VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
+  if [ "$VERSION" = "" ]; then
+    echo "Could not detect new version to update the local image cache"
+    exit 1
+  fi
+  pull_image $IMAGE $VERSION
 elif [ "$1" = get ]; then
   VERSION=${2:-$VERSION}
   pull_n_run_racker $IMAGE $VERSION
