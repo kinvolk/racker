@@ -50,9 +50,11 @@ type ArgOption struct {
 }
 
 type Flag struct {
-	Skip         bool   `yaml:",omitempty"`
-	Help         string `yaml:",omitempty"`
-	AllowPrompts bool   `yaml:"allow-other-prompts,omitempty"`
+	Skip         bool        `yaml:",omitempty"`
+	Help         string      `yaml:",omitempty"`
+	Type         string      `yaml:",omitempty"`
+	Default      interface{} `yaml:",omitempty"`
+	AllowPrompts bool        `yaml:"allow-other-prompts,omitempty"`
 }
 
 type Arg struct {
@@ -328,7 +330,14 @@ func main() {
 			if help == "" {
 				help = arg.Help
 			}
-			answers[arg.Name] = flags.String(arg.Name, arg.Default, help)
+
+			switch arg.Flag.Type {
+			case "confirm":
+				boolDefault := arg.Flag.Default == "true" || arg.Flag.Default == "yes"
+				answers[arg.Name] = flags.Bool(arg.Name, boolDefault, help)
+			default:
+				answers[arg.Name] = flags.String(arg.Name, arg.Default, help)
+			}
 		}
 
 		a := ArgQuestion{arg, &p, nil}
@@ -390,7 +399,16 @@ func main() {
 			if ok {
 				s = *sPtr
 			} else {
-				log.Fatalf("Cannot get type for %s: %v\n", argName, ans)
+				bPtr, ok := ans.(*bool)
+				if ok {
+					if *bPtr {
+						s = "true"
+					} else {
+						s = "false"
+					}
+				} else {
+					log.Fatalf("Cannot get type for %s: %v\n", argName, ans)
+				}
 			}
 
 			if s == "" && results[resultVar] != "" {
