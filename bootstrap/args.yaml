@@ -1,4 +1,12 @@
 args:
+- name: provision
+  ignore: true
+- name: onfailure
+  ignore: true
+- name: retries
+  ignore: true
+- name: exclude
+  ignore: true
 - name: cluster-name
   var: CLUSTER_NAME
   default: lokomotive

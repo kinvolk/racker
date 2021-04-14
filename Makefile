@@ -31,3 +31,7 @@ build-docs-docker-image:
 generate-docs-pdf:
 	echo "Using Docker/Podman, if this fails, ensure to run make build-docs-docker-image first"
 	DOCKER="docker run -i --rm -v ${PWD}/docs:/work -v ${PWD}:${PWD} -w /work weasy" ./gen-pdf docs output.pdf
+
+.PHONY: wizard
+wizard:
+	cd wizard && go build -o args-wizard args-wizard.go

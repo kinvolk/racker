@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"gopkg.in/yaml.v2"
@@ -49,8 +50,9 @@ type ArgOption struct {
 }
 
 type Flag struct {
-	Skip bool   `yaml:",omitempty"`
-	Help string `yaml:",omitempty"`
+	Skip         bool   `yaml:",omitempty"`
+	Help         string `yaml:",omitempty"`
+	AllowPrompts bool   `yaml:"allow-other-prompts,omitempty"`
 }
 
 type Arg struct {
@@ -61,6 +63,7 @@ type Arg struct {
 	Flag    Flag        `yaml:",omitempty"`
 	Options []ArgOption `yaml:",omitempty"`
 	Help    string      `yaml:",omitempty"`
+	Ignore  bool        `yaml:",omitempty"`
 }
 
 type ArgQuestion struct {
@@ -70,7 +73,8 @@ type ArgQuestion struct {
 }
 
 type ArgsWizardConf struct {
-	Args []Arg `yaml:",omitempty"`
+	IgnoreUnknownFlags bool  `yaml:"ignore-unknown-flags,omitempty"`
+	Args               []Arg `yaml:",omitempty"`
 }
 
 func (o *ArgOption) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -182,9 +186,66 @@ func getValueFromAnswer(anserIface interface{}, options []ArgOption) (string, er
 	return s, nil
 }
 
+func cleanArgs(args []string, c ArgsWizardConf) []string {
+	argsToIgnore := make(map[string]bool)
+	knownArgs := make(map[string]bool)
+
+	for _, arg := range c.Args {
+		if arg.Ignore {
+			argsToIgnore[arg.Name] = true
+			continue
+		}
+		knownArgs[arg.Name] = true
+	}
+
+	shouldIgnore := func(arg string) bool {
+		return argsToIgnore[arg] || (c.IgnoreUnknownFlags && !knownArgs[arg])
+	}
+
+	var cleanedArgs []string
+
+	i := 0
+	for i < len(args) {
+		flag := args[i]
+		flagSplit := strings.Split(flag, "=")
+		flag = flagSplit[0]
+		flagUsesEqual := len(flagSplit) > 1
+
+		i++
+
+		if !shouldIgnore(strings.TrimPrefix(flag, "-")) {
+			cleanedArgs = append(cleanedArgs, flag)
+			if flagUsesEqual {
+				cleanedArgs = append(cleanedArgs, flagSplit[1])
+			} else if i < len(args) {
+				// Add positional argument
+				cleanedArgs = append(cleanedArgs, args[i])
+			}
+		}
+
+		// Jump to after the positional argument.
+		if !flagUsesEqual {
+			i++
+		}
+	}
+	return cleanedArgs
+}
+
+func isFlagSet(flagSet *flag.FlagSet, flagName string) bool {
+	isSet := false
+	flagSet.Visit(func(f *flag.Flag) {
+		if f.Name == flagName {
+			isSet = true
+		}
+	})
+
+	return isSet
+}
+
 func main() {
 	ownFlags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	confFilePath := ownFlags.String("config", "./args.yaml", "path to the configuration file")
+	showHelp := ownFlags.Bool("show-help", false, "show the help/usage associated with the given configuration")
 
 	ownArgs, secondArgs := divideArgs(os.Args[1:])
 
@@ -215,6 +276,10 @@ func main() {
 	var lastQuestion *ArgQuestion
 
 	for _, arg := range c.Args {
+		if arg.Ignore {
+			continue
+		}
+
 		var p survey.Prompt
 
 		help := arg.Prompt.Help
@@ -267,7 +332,7 @@ func main() {
 		}
 
 		a := ArgQuestion{arg, &p, nil}
-		if firstQuestion == nil {
+		if firstQuestion == nil && !a.Arg.Prompt.Skip {
 			firstQuestion = &a
 			lastQuestion = &a
 		} else if !a.Arg.Prompt.Skip {
@@ -278,17 +343,33 @@ func main() {
 		argsMap[arg.Name] = &a
 	}
 
+	if *showHelp {
+		flags.PrintDefaults()
+		os.Exit(0)
+	}
+
+	secondArgs = cleanArgs(secondArgs, c)
+
+	promptMode := true
+
 	if len(secondArgs) > 0 {
 		if err = flags.Parse(secondArgs); err != nil {
 			flags.PrintDefaults()
 			log.Fatal(err)
 		}
 
-		for _, q := range(argsMap) {
+		for _, q := range argsMap {
 			argName := q.Arg.Name
 
 			if q.Arg.Flag.Skip {
 				continue
+			}
+
+			// Some flags may be used while still letting prompts
+			// be shown to the user, but by default the use of a flag
+			// enfoces the flag-mode.
+			if isFlagSet(flags, q.Arg.Name) && !q.Arg.Flag.AllowPrompts {
+				promptMode = false
 			}
 
 			resultVar := q.Arg.Var
@@ -319,7 +400,9 @@ func main() {
 			results[argsMap[argName].Arg.Var] = s
 		}
 
-	} else {
+	}
+
+	if promptMode {
 		arg := firstQuestion
 		for arg != nil {
 			q := survey.Question{

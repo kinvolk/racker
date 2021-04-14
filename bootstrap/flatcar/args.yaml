@@ -1,4 +1,12 @@
 args:
+- name: provision
+  ignore: true
+- name: onfailure
+  ignore: true
+- name: retries
+  ignore: true
+- name: exclude
+  ignore: true
 - name: ip-addrs
   var: PUBLIC_IP_ADDRS
   flag:

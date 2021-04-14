@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Copyright 2021 Kinvolk GmbH
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #       http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -45,76 +45,40 @@ pull_n_run_racker() {
   run_racker $1 $2
 }
 
+is_help_arg() {
+  if [ "$1" = "-h" ] || [ "$1" = "-help" ]; then
+    return 0
+  fi
+  return 1
+}
+
 usage() {
-  declare -A args=(
-    ["bootstrap -- [-provision (flatcar|lokomotive)] [-h] ..."]="guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
-    ["status"]="show a summary of the cluster"
-    ["update"]="install updates for the current racker version"
-    ["upgrade"]="migrate to a newer racker version"
-    ["get VERSION"]="install a particular racker version"
-    ["factory"]="preparation procedure to configure the hardware"
-    ["version"]="print racker version"
-    ["--full"]="status: print the details for all servers"
-    ["--exclude='MAC...'"]="bootstrap: exclude these nodes from provisioning, expects a string containing a white-space separated list of MAC addresses"
-    ["--onfailure=(ask|retry|exclude|cancel)"]="bootstrap: behavior on provisioning failure (default: ask)"
-    ["--retries=X"]="bootstrap: if --onfailure=retry is set, the number of retries before giving up (default: 3)"
-    ["-h/--help"]="show usage"
+  args=(
+    "bootstrap [-provision (flatcar|lokomotive)] [-h] ... : guided setup for Lokomotive Kubernetes or individual Flatcar Container Linux instances managed with Ignition"
+    "status [-full]: show a summary of the cluster (use --full to print the details for all servers)"
+    "update: install updates for the current racker version"
+    "upgrade: migrate to a newer racker version"
+    "get VERSION: install a particular racker version"
+    "factory: preparation procedure to configure the hardware"
+    "version: print racker version"
+    "help: show usage"
   )
 
   echo "Usage: $0 COMMAND"
   echo "Commands:"
-  for arg in "${!args[@]}"; do
+  for i in "${args[@]}"; do
+    IFS=':' read arg desc <<< "${i}"
     printf " %-20s: " "$arg"
-    echo ${args["$arg"]}
+    echo "${desc}"
   done
   exit 1
 }
 
-ARGS=$(getopt -n "$0" -o he:o:r: -l full,help,exclude:,onfailure:,retries: -- "$@")
-eval set -- "$ARGS"
-
-while true; do
-  case "${1:-}" in
-    --full)
-      STATUS_ARG="--full"
-      shift
-      ;;
-    -h|--help)
-      usage
-      ;;
-    --exclude)
-      shift
-      export EXCLUDE_NODES="$1"
-      shift
-      ;;
-    --onfailure)
-      shift
-      export ONFAILURE=$1
-      shift
-      ;;
-    --retries)
-      shift
-      export RETRIES=$1
-      shift
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      echo "error: Unrecognized option \"$1\"" >&2
-      exit 1
-      ;;
-  esac
-done
-
-if [ $# -lt 1 ]; then
+if [ $# -lt 1 ] || [ "$1" = "" ] || [ "$1" = "help" ]; then
     usage
 fi
 
-if [ "$1" = "" ]; then
-  usage
-elif [ "$1" = update ]; then
+if [ "$1" = update ]; then
   pull_n_run_racker $IMAGE $VERSION
 elif [ "$1" = upgrade ]; then
   pull_n_run_racker $IMAGE "latest"
@@ -128,6 +92,9 @@ elif [ "$1" = factory ]; then
   # Delete the version flag file to force an update on the first run
   sudo rm -f /opt/racker/RACKER_VERSION
 elif [ "$1" = status ]; then
+  if [ "${2:-}" = "-full" ]; then
+    STATUS_ARG="--full"
+  fi
   /opt/racker/bootstrap/status.sh ${STATUS_ARG:-}
 elif [ "$1" = bootstrap ]; then
   if [ ! -f /opt/racker/RACKER_VERSION ]; then
@@ -137,17 +104,7 @@ elif [ "$1" = bootstrap ]; then
   fi
 
   # Discard the bootstrap as first arg
-  declare -a ARGS
-  ARGS=("${@:2}")
-  if [ ${#ARGS[*]} -gt 1 ]; then
-    # Split the first arg if it has an = sign, so we can just then use this one
-    # for the first wizard, and the rest for the flatcar/lokomotive wizards.
-    declare -a first_arg
-    first_arg=("$(echo ${ARGS[0]}|tr '=' ' ')")
-    len_first_arg=${#first_arg[@]}
-    rest_args=("${ARGS[@]:$len_first_arg}")
-    ARGS=("${first_arg[@]}" "${rest_args[@]}")
-  fi
+  shift
 
   node_list="$(tail -n +2 /usr/share/oem/nodes.csv | grep -v -f <(cat /sys/class/net/*/address))"
   # Find the list of available node types, excluding the management node
@@ -160,9 +117,12 @@ elif [ "$1" = bootstrap ]; then
   # Ask for the configuration and save it in a temp file
   ARGS_FILE="$(mktemp)"
 
-  set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
-  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "${ARGS[@]::2}"
-  set -u
+  if is_help_arg "${1:-}"; then
+    args-wizard -show-help -config /opt/racker/bootstrap/provision-type.yaml
+    exit 0
+  fi
+
+  args-wizard -config /opt/racker/bootstrap/provision-type.yaml > $ARGS_FILE -- "$@"
 
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
@@ -173,9 +133,17 @@ elif [ "$1" = bootstrap ]; then
   . $ARGS_FILE
   set +a
 
-  if [ ${#ARGS[*]} -gt 2 ] && { [ "${ARGS[2]}" = "-h" ] || [ "${ARGS[2]}" = "--help" ]; }; then
-    true # the user just shows the help for the given provision type
-  else
+  # We need to check here if the help argument has been used because
+  # we need to ignore the cluster directory checks depending on it.
+  using_help_arg=false
+  for i in "$@"; do
+    if is_help_arg "$i"; then
+      using_help_arg=true
+      break
+    fi
+  done
+
+  if ! $using_help_arg; then
     # any existing directory needs to be removed first (and both directories can't coexist)
     LOKOMOTIVE_DIR="$HOME/lokomotive"
     FLATCAR_DIR="$HOME/flatcar-container-linux"
@@ -244,9 +212,7 @@ elif [ "$1" = bootstrap ]; then
   EDITOR_TMP=/tmp/racker
   mkdir -p $EDITOR_TMP
 
-  set +u # Disabling the undefined variable checker because in bash version 4.* it will fail when expanding an empty array
-  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "${ARGS[@]:2}"
-  set -u
+  TMPDIR=$EDITOR_TMP EDITOR="docker run --rm -it -v $TMPDIR:$TMPDIR:Z $IMAGE:$VERSION nano" args-wizard -config <(sed -e 's@${default_num_controllers}@'"${default_num_controllers}@g" -e 's@${first_cluster_type_prompt}@'"${first_cluster_type_prompt}@g" -e 's@    ${prefill}@'"${prefill}@g" -e 's@  - ${ha_node_types}@'"${ha_node_types}@g" -e 's@  - ${node_types}@'"${node_types}@g" $provision_args_file) > $ARGS_FILE -- "$@"
 
   # Exit on -h
   if [ "$(wc -l $ARGS_FILE | cut -d " " -f 1)" = "0" ]; then
