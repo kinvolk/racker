@@ -20,6 +20,9 @@ NODES_FILE="/usr/share/oem/nodes.csv"
 NODES_HEADER="Primary MAC address, BMC MAC address, Secondary MAC address, Node Type, Comments"
 IFS=',' read -r -a NODES_HEADER_ARRAY <<< "$NODES_HEADER";
 
+RACKER_VERSION_FILE="/opt/racker/RACKER_VERSION"
+RACKER_STATE_DIR="/opt/racker-state"
+
 usage() {
   args=(
     "check                               : validate the files needed for using racker"
@@ -104,9 +107,103 @@ validate() {
   echo "✓ $NODES_FILE looks valid"
 }
 
+reset_usage() {
+  echo "Usage:"
+  args-wizard -show-help -config /opt/racker/bootstrap/factory-reset.yaml
+  exit 0
+}
+
+reset() {
+  if [ -z "${1:-}" ]; then
+    reset_usage
+  fi
+
+  ARGS_FILE="$(mktemp)"
+
+  args-wizard -config /opt/racker/bootstrap/factory-reset.yaml > $ARGS_FILE -- "$@"
+
+  set -a
+  . $ARGS_FILE
+  set +a
+
+  if [ "${RESET_RACKER_VERSION:-}" != "true" ] && [ "${RESET_NODES:-}" != "true" ]; then
+    reset_usage
+    exit 1
+  fi
+
+  if [ "${RESET_CONFIRM}" != "true" ]; then
+    if [ "${RESET_RACKER_VERSION}" = "true" ]; then
+      CURRENT_RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
+      if [ -z "$CURRENT_RACKER_VERSION" ]; then
+        CURRENT_RACKER_VERSION="none is set"
+      fi
+      echo "This will reset the version information from racker (currently $CURRENT_RACKER_VERSION)"
+    fi
+    if [ "${RESET_NODES}" = "true" ]; then
+      echo "This will reset the nodes file ($NODES_FILE) and remove ${RACKER_STATE_DIR}"
+    fi
+  fi
+
+  confirm_yaml="
+ignore-unknown-flags: true
+args:
+- name: confirm
+  var: RESET_CONFIRM
+  default: false
+  flag:
+    skip: true
+  prompt:
+    message: Are you sure?
+    type: confirm
+"
+
+  if [ "${RESET_CONFIRM}" != "true" ]; then
+    args-wizard --config <(echo "$confirm_yaml") > $ARGS_FILE -- "$@"
+
+    set -a
+    . $ARGS_FILE
+    set +a
+  fi
+
+  if [ "${RESET_CONFIRM}" = "true" ]; then
+    if [ "${RESET_RACKER_VERSION}" = "true" ]; then
+      ret=0
+      sudo rm -f $RACKER_VERSION_FILE || ret=$?
+      if [ ! $ret -eq 0 ]; then
+        echo "× Failed to reset racker's version"
+        exit $ret
+      else
+        echo "✓ Racker version reset (you can run 'racker update' to update it)"
+      fi
+    fi
+
+    if [ "${RESET_NODES}" = "true" ]; then
+      ret=0
+      sudo su -c "echo $NODES_HEADER > $NODES_FILE" || ret=$?
+      if [ $ret -eq 0 ]; then
+        sudo rm -rf "$RACKER_STATE_DIR" || ret=$?
+        if [ ! $ret -eq 0 ]; then
+          echo "× Failed to reset racker state"
+          exit $ret
+        fi
+      else
+        echo "× Failed to reset nodes"
+        exit $ret
+      fi
+
+      echo "✓ Nodes file reset ($NODES_FILE)"
+    fi
+  else
+    echo "× Reset not confirmed; doing nothing."
+  fi
+}
+
 
 if [ "${1:-}" = "check" ]; then
   validate
+elif [ "${1:-}" = "reset" ]; then
+  shift
+  reset "$@"
 elif [ "${1:-}" = "-h" ] || [ "${1:-}" = "-help" ] || [ -z ${1:-} ]; then
   usage
 else

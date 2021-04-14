@@ -1,0 +1,24 @@
+ignore-unknown-flags: true
+args:
+- name: racker-version
+  var: RESET_RACKER_VERSION
+  default: false
+  help: "Reset the current version information, so the first time racker is used, it will update to the latest version."
+  flag:
+    type: confirm
+  prompt:
+    skip: true
+- name: nodes
+  var: RESET_NODES
+  default: false
+  help: "Resets (empties) the rack metadata with the list of nodes and removes racker's state, afterwards the rack metadata needs to be filled in again"
+  flag:
+    type: confirm
+  prompt:
+    skip: true
+- name: confirm-reset
+  var: RESET_CONFIRM
+  default: "false"
+  help: "Set to true to confirm the actions directly (otherwise a prompt for confirmation will shown); use this flag carefully (and likely for automation only)."
+  prompt:
+    skip: true
