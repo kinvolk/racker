@@ -3,14 +3,11 @@ title: Preparing the Management Node
 weight: 50
 ---
 
-The installer for the management node is delivered as a container image but extracted in the host and
-run locally.
-The reason for this approach if that we can keep a very minimal dependency on
-what's shipped in the OS (that's installed in the management node).
-The assumption is that the management node runs	Flatcar	Container Linux, customized with a declarative Ignition configuration.
-In the following sections an iPXE script for automated installation of the management node is provided.
+Racker is distributed as a container image but run locally (read more about this approach in the [development docs](../development/).
 
-After the management node OS is installed, the rack metadata needs to be configured. This is a one time setup.
+Racker assumes there is *the management node*, which runs Flatcar Container Linux and is customized with a declarative Ignition configuration. After the management node OS is installed, the rack metadata needs to be configured. This is a one time setup.
+
+The sections below will drive users through the process of preparing the management node.
 
 ## Ignition Configuration
 
