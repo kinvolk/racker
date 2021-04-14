@@ -27,6 +27,7 @@ usage() {
   args=(
     "check                               : validate the files needed for using racker"
     "reset [-h, -racker-version, -nodes] : print racker version"
+    "gen-ssh-key NAME                    : Generates a ssh key pair and prints the private one"
     "help                                : show usage"
   )
 
@@ -198,13 +199,32 @@ args:
   fi
 }
 
+ssh_keys_usage() {
+  echo "Usage:"
+  echo " racker factory gen-ssh-key NAME : Generates the ssh key ~/.ssh/id_rsa(.pub) and prints the private key to note for logging in via ssh instead of the serial console"
+}
+
+generate_ssh_keys() {
+  key_file="$HOME/.ssh/id_rsa"
+  ssh-keygen -f "$key_file" -N ''
+
+  echo
+  echo "Private key:"
+  echo
+
+  cat "$key_file"
+}
+
 
 if [ "${1:-}" = "check" ]; then
   validate
 elif [ "${1:-}" = "reset" ]; then
   shift
   reset "$@"
-elif [ "${1:-}" = "-h" ] || [ "${1:-}" = "-help" ] || [ -z ${1:-} ]; then
+elif [ "${1:-}" = "gen-ssh-key" ]; then
+  shift
+  generate_ssh_keys
+elif [ "${1:-}" = "-h" ] || [ "${1:-}" = "-help" ] || [ -z "${1:-}" ]; then
   usage
 else
   echo "Unknown command ${1:-}"
