@@ -69,7 +69,7 @@ tee "${out_html}" > /dev/null <<EOF
     h4 { counter-increment: h4; }
     h5 { counter-increment: h5; }
     h6 { counter-increment: h6; }
-    body { counter-reset: h1 h2 h3 h4 h5 h6; }
+    body { counter-reset: h1 h2 h3 h4 h5 h6; max-width: 70em; }
     h1 { counter-reset: h2 h3 h4 h5 h6; }
     h2 { counter-reset: h3 h4 h5 h6; }
     h3 { counter-reset: h4 h5 h6; }
@@ -103,8 +103,8 @@ function get_level() {
 function make_id() {
   idtext="$1"
   # remove leading and trailing whitespace, and convert all whitespace to a single space before replacement
-  # append _ to help preventing ID clashes with existing IDs
-  echo "${idtext}_" | xargs echo | tr ' ' '-'
+  # append _ to help preventing ID clashes with existing IDs, and replace & as invalid character
+  echo "${idtext}_" | xargs echo | tr ' ' '-' | tr '&' '_'
 }
 
 function find_path() {
@@ -163,8 +163,8 @@ for i in $(ordered_list ./); do
   target="$(make_id "${section_title}")"
   echo "<h${level} id=\"${target}\">${section_title}</h${level}>" >> "${out_html}"
   # Replace hrefs html output if they point to markdown file with the section we generate for this file
-  html="$(${DOCKER} pandoc "${i}")"
-  links="$(echo "${html}" | { grep -P -o 'href="[^#].*?"' || true ; } | { grep -v 'href="http' || true ; } | cut -d '"' -f 2)"
+  html="$(${DOCKER} pandoc --lua-filter embeddsvg.lua "${i}")"
+  links="$(echo "${html}" | { grep -P -o ' href="[^#].*?"' || true ; } | { grep -v 'href="http' || true ; } | cut -d '"' -f 2)"
   for link in ${links}; do
     new_link="#$(make_id "$(get_title "$(find_path "${link}")")")"
     html="$(echo "${html}" | sed "s@${link}@${new_link}@g")"
