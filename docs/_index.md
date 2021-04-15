@@ -20,3 +20,5 @@ while the management node itself has full controll over the BMCs of the rack, se
 them and interfacing with IPMI to control the PXE booting.
 
 The solution consist of an installer for the management node, which is run once, and a command line utility run on the management node at any later point.
+
+![Overview](overview.svg)

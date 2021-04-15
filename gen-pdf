@@ -10,10 +10,38 @@ out_html="$(readlink -f "${out_pdf}")".html
 
 cd "${docs_dir}"
 
+function get_weight() {
+  markdown_file="$1"
+  found_weight="$({ grep "^weight: " "${markdown_file}" || true ; } | cut -d : -f 2-)"
+  if [ "${found_weight}" = "" ]; then
+    found_weight=-1
+  fi
+  echo "${found_weight}"
+}
+
 function ordered_list() {
-  # TODO: generate similar output but ordered by weight
-  # sort with replacement to put _index.md first, then ASCII order (0-9, A-Z, a-z)
-  find . -name '*.md' | tr '_' '%' | LC_COLLATE=C sort | tr '%' '_' | grep -v 'README.md'
+  local current="$1" # should have a trailing "/" like "./" or "subdir/"
+  if [ -f "_index.md" ]; then
+    # always comes first regardless of its weight
+    echo "${current}_index.md"
+  fi
+  subdirs="$(ls ${current}*/_index.md 2>/dev/null || true)" # should have a trailing "/"
+  markdown_files="$({ ls ${current}*.md 2>/dev/null || true ; } | { grep -v 'README.md' || true ; } | { grep -v '_index.md' || true ; })"
+  all="${subdirs} ${markdown_files}"
+  all_weighted=""
+  for entry in ${all}; do
+    all_weighted+="$(get_weight ${entry}):${entry}"$'\n'
+  done
+  all_weighted="$(echo "${all_weighted}" | sort -n)" # do not use -s to also have the remaining names sorted in ASCII order
+  for entry in ${all_weighted}; do
+    filename=$(echo "$entry" | cut -d : -f 2-)
+    dirname=$(echo "$filename" | sed 's/_index.md//g')
+    if [ "${dirname}" = "$filename" ]; then
+      echo "$filename"
+    else
+      ordered_list "${dirname}"
+    fi
+  done
 }
 
 title="$({ grep "^title: " _index.md || true ; } | cut -d : -f 2-)"
@@ -41,7 +69,7 @@ tee "${out_html}" > /dev/null <<EOF
     h4 { counter-increment: h4; }
     h5 { counter-increment: h5; }
     h6 { counter-increment: h6; }
-    body { counter-reset: h1 h2 h3 h4 h5 h6; }
+    body { counter-reset: h1 h2 h3 h4 h5 h6; max-width: 70em; }
     h1 { counter-reset: h2 h3 h4 h5 h6; }
     h2 { counter-reset: h3 h4 h5 h6; }
     h3 { counter-reset: h4 h5 h6; }
@@ -75,15 +103,15 @@ function get_level() {
 function make_id() {
   idtext="$1"
   # remove leading and trailing whitespace, and convert all whitespace to a single space before replacement
-  # append _ to help preventing ID clashes with existing IDs
-  echo "${idtext}_" | xargs echo | tr ' ' '-'
+  # append _ to help preventing ID clashes with existing IDs, and replace & as invalid character
+  echo "${idtext}_" | xargs echo | tr ' ' '-' | tr '&' '_'
 }
 
 function find_path() {
   relative="$1"
   # cut (.+/)+ away from the prefix
   path_part="$(echo ".${relative}" | cut -d '#' -f 1 | sed 's#\./#/#g' | sed 's#\./##g')"
-  found="$(ordered_list | { grep -m 1 "${path_part}" || true ; })"
+  found="$(ordered_list ./ | { grep -m 1 "${path_part}" || true ; })"
   if [ "${found}" = "" ]; then
     echo "/dev/null"
   else
@@ -104,7 +132,7 @@ echo "<b>Contents</b>" >> "${out_html}"
 echo '<ol type="1">' >> "${out_html}"
 prev_level=1
 count=0
-for i in $(ordered_list); do
+for i in $(ordered_list ./); do
   count=$(( count + 1 ))
   level=$(get_level "${i}")
   if [ "${level}" -gt "${prev_level}" ]; then
@@ -129,14 +157,14 @@ for i in $(seq 0 "${level}"); do
 done
 
 prev_level=1
-for i in $(ordered_list); do
+for i in $(ordered_list ./); do
   section_title="$(get_title "${i}")"
   level=$(get_level "${i}")
   target="$(make_id "${section_title}")"
   echo "<h${level} id=\"${target}\">${section_title}</h${level}>" >> "${out_html}"
   # Replace hrefs html output if they point to markdown file with the section we generate for this file
-  html="$(${DOCKER} pandoc "${i}")"
-  links="$(echo "${html}" | { grep -P -o 'href="[^#].*?"' || true ; } | { grep -v 'href="http' || true ; } | cut -d '"' -f 2)"
+  html="$(${DOCKER} pandoc --lua-filter embeddsvg.lua "${i}")"
+  links="$(echo "${html}" | { grep -P -o ' href="[^#].*?"' || true ; } | { grep -v 'href="http' || true ; } | cut -d '"' -f 2)"
   for link in ${links}; do
     new_link="#$(make_id "$(get_title "$(find_path "${link}")")")"
     html="$(echo "${html}" | sed "s@${link}@${new_link}@g")"
