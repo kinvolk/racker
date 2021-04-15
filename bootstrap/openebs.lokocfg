@@ -1,0 +1,11 @@
+component "openebs-operator" {
+  ndm_selector_label = "storage.lokomotive.io"
+  ndm_selector_value = "openebs"
+}
+
+component "openebs-storage-class" {
+  storage-class "openebs-cstor" {
+    replica_count  = 3
+    default        = true
+  }
+}

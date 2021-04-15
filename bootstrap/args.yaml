@@ -118,6 +118,48 @@ args:
   prompt:
     message: Do you want to install the Lokomotive Web UI?
     type: select
+- name: storage-provider
+  var: STORAGE_PROVIDER
+  help: "Whether to setup storage for the applications running on Lokomotive."
+  flag:
+    help: "Setup storage for Lokomotive. Options are 'none', 'rook', 'openebs'"
+  default: none
+  options:
+  - display: None
+    value: none
+  - display: OpenEBS
+    value: openebs
+  - display: Rook
+    value: rook
+  prompt:
+    message: Choose a Kubernetes storage provider
+    type: select
+    next:
+    - if-value: none
+      prompt: config-backup
+    - if-value-not: none
+      prompt: storage-node-type
+- name: storage-node-type
+  var: STORAGE_NODE_TYPE
+  help: With different hardware in a rack you can specify which ones to use for storage (The node types are annotated in /usr/share/oem/nodes.csv).
+  default: any
+  options:
+  - any
+  - ${node_types}
+  prompt:
+    skip: true
+    message: Choose a node type for storage nodes
+    type: select
+    next:
+    - if-value-not:
+      prompt: number-of-storage-nodes
+- name: number-of-storage-nodes
+  var: NUMBER_OF_STORAGE_NODES
+  help: The number of nodes of the selected type to be used for storage.
+  default: all
+  prompt:
+    message: Number of machines of selected type to use as storage nodes.
+    type: input
 - name: config-backup
   var: USE_VELERO
   help: "Whether to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding: \n

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Copyright 2021 Kinvolk GmbH
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #       http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -48,6 +48,15 @@ BACKUP_AWS_SECRET_ACCESS_KEY=${BACKUP_AWS_SECRET_ACCESS_KEY:-""}
 BACKUP_NAME=${BACKUP_NAME:-"lokomotive"}
 BACKUP_S3_BUCKET_NAME=${BACKUP_S3_BUCKET_NAME:-""}
 BACKUP_AWS_REGION=${BACKUP_AWS_REGION:-""}
+STORAGE_PROVIDER=${STORAGE_PROVIDER:-"none"}
+STORAGE_NODE_TYPE=${STORAGE_NODE_TYPE:-"any"}
+if [ "${STORAGE_NODE_TYPE}" = "any" ]; then
+    STORAGE_NODE_TYPE=""
+fi
+NUMBER_OF_STORAGE_NODES=${NUMBER_OF_STORAGE_NODES:-"1"}
+if [ "${NUMBER_OF_STORAGE_NODES}" = "0" ]; then
+    STORAGE_PROVIDER="none"
+fi
 USE_QEMU=${USE_QEMU:-"1"}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
@@ -148,6 +157,21 @@ else
   MAC_ADDRESS_LIST=(${CONTROLLERS_MAC[*]} ${WORKERS_MAC[*]})
   BMC_MAC_ADDRESS_LIST=(${CONTROLLERS_BMC_MAC[*]} ${WORKERS_BMC_MAC[*]})
   WORKER_AMOUNT=$((${#MAC_ADDRESS_LIST[*]} - CONTROLLER_AMOUNT))
+  if [ "${NUMBER_OF_STORAGE_NODES}" = "all" ];then
+    NUMBER_OF_STORAGE_NODES="$(echo "$WORKERS" | { grep "[ ,]$STORAGE_NODE_TYPE" || true ; } | wc -l)"
+  fi
+  if [ "${STORAGE_PROVIDER}" != "none" ]; then
+    STORAGE_NODES="$(echo "$WORKERS" | { grep -m "$NUMBER_OF_STORAGE_NODES" "[ ,]$STORAGE_NODE_TYPE" || true ;})"
+    if [ "$NUMBER_OF_STORAGE_NODES" = "0" ]; then
+      echo "no storage nodes of the given type found (check the STORAGE_NODE_TYPE and NUMBER_OF_STORAGE_NODES)"
+      exit 1
+    fi
+    if [ "$(echo "$STORAGE_NODES" | wc -l)" != "$NUMBER_OF_STORAGE_NODES" ]; then
+      echo "specified amount of storage nodes not found (check the STORAGE_NODE_TYPE and NUMBER_OF_STORAGE_NODES)"
+      exit 1
+    fi
+    STORAGE_NODES_MAC=($(echo "$STORAGE_NODES" | cut -d , -f 1))
+  fi
 fi
 
 
@@ -479,6 +503,7 @@ function gen_cluster_vars() {
   local worker_names="["
   local clc_snippets="{"$'\n'
   local installer_clc_snippets="{"$'\n'
+  local node_specific_labels="{"$'\n'
   local ip_address=""
   local controller_hosts=""
   local id=""
@@ -498,6 +523,7 @@ function gen_cluster_vars() {
     name="controller"
   fi
   for mac in ${MAC_ADDRESS_LIST[*]}; do
+    node_color="$(echo "$NODES" | grep ${mac} | cut -d , -f 4 | xargs)"
     ip_address="$(calc_ip_addr $mac)"
     if [ "$type" = "lokomotive" ]; then
       id="${CLUSTER_NAME}-${name}-${count}.${KUBERNETES_DOMAIN_NAME}"
@@ -512,6 +538,13 @@ function gen_cluster_vars() {
       worker_macs+="\"${mac}\", "
       worker_names+="\"${id}\", "
     fi
+    node_specific_labels+="\"${id}\" = {\"metadata.node-type\" = \"${node_color}\""
+    if [ "$STORAGE_PROVIDER" != "none" ]; then
+      if [ "$(echo ${STORAGE_NODES_MAC[*]} | grep ${mac})" ]; then
+        node_specific_labels+=", \"storage.lokomotive.io\" = \"${STORAGE_PROVIDER}\""
+      fi
+    fi
+    node_specific_labels+="}"$'\n'
     mkdir -p cl
     clc_snippets+="\"${id}\" = [\"cl/${id}.yaml\", \"cl/${id}-custom.yaml\"]"$'\n'
     if [ "$type" = "lokomotive" ]; then
@@ -562,6 +595,7 @@ EOF
   worker_names+="]"
   clc_snippets+=$'\n'"}"
   installer_clc_snippets+=$'\n'"}"
+  node_specific_labels+=$'\n'"}"
   # We escape $var as \$var for the bash heredoc to preserve it as Terraform string, use ${VAR} for the bash heredoc substitution.
   # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
@@ -578,6 +612,7 @@ EOF
 	matchbox_addr = "$(get_matchbox_ip_addr)"
 	clc_snippets = ${clc_snippets}
 	installer_clc_snippets = ${installer_clc_snippets}
+	node_specific_labels = ${node_specific_labels}
 EOF
   variable_file="lokocfg.vars"
   else
@@ -609,6 +644,14 @@ EOF
 
   if [ "$type" = "lokomotive" ]; then
     copy_script baremetal.lokocfg
+
+    if [ "$STORAGE_PROVIDER" = "rook" ]; then
+      copy_script rook.lokocfg
+    fi
+
+    if [ "$STORAGE_PROVIDER" = "openebs" ]; then
+      copy_script openebs.lokocfg
+    fi
 
     if [ "$USE_WEB_UI" = "true" ]; then
       copy_script web-ui.lokocfg

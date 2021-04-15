@@ -1,0 +1,21 @@
+component "rook" {
+  node_selector = {
+    "storage.lokomotive.io" = "rook"
+  }
+
+  csi_plugin_node_selector = {
+    "storage.lokomotive.io" = "rook"
+  }
+}
+
+component "rook-ceph" {
+  storage_class {
+    enable = true
+    default = true
+  }
+  node_affinity {
+    key      = "storage.lokomotive.io"
+    operator = "Equal"
+    values    = ["rook"]
+  }
+}
