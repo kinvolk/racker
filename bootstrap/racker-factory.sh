@@ -106,6 +106,25 @@ validate() {
   done <<< "$nodes"
 
   echo "✓ $NODES_FILE looks valid"
+
+  node_list="$(tail -n +2 "$NODES_FILE" | grep -v -f <(cat /sys/class/net/*/address))"
+  node_types_list=$(echo "${node_list}" | cut -d , -f 4 | sed 's/ //g' | sort)
+  num_node_types=$(uniq <<< "$node_types_list" | wc -l)
+  if [ -z "$node_types_list" ]; then
+    echo "🛈 No different node types configured"
+  else
+    echo "🛈 $num_node_types node types configured:"
+    count=0
+    for i in $(uniq <<< $node_types_list); do
+      # Count the nodes of this type and print the result with the type
+      echo "  $(echo "$node_types_list" | grep $i | wc -l) \"$i\""
+      count=$(($count + 1))
+    done
+    # Account for the empty node type cases
+    if [ ! $count -eq $num_node_types ]; then
+      echo "  $(($num_node_types - $count)) \"\""
+    fi
+  fi
 }
 
 reset_usage() {
