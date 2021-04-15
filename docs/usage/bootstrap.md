@@ -20,7 +20,7 @@ $ racker bootstrap
   Flatcar Container Linux
 ```
 
-## When boostrapping fails
+## When bootstrapping fails
 
 It may happen that, for some reason, a node is not able to be provisioned during `racker bootstrap`. In that case, the provision process will stop and ask the user what to do (exclude, retry, etc.).
 
