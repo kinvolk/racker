@@ -1,0 +1,5 @@
+#!ipxe
+set base-url http://stable.release.flatcar-linux.net/amd64-usr/current
+kernel ${base-url}/flatcar_production_pxe.vmlinuz initrd=flatcar_production_pxe_image.cpio.gz flatcar.first_boot=1 console=ttyS1,57600n8 earlyprintk=serial,ttyS1,57600n8 flatcar.autologin ignition.config.url=https://raw.githubusercontent.com/kinvolk/racker/main/management-node-ipxe/install-ignition.json
+initrd ${base-url}/flatcar_production_pxe_image.cpio.gz
+boot

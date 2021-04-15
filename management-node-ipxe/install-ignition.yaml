@@ -1,0 +1,39 @@
+---
+systemd:
+  units:
+    - name: installer.service
+      enabled: true
+      contents: |
+        [Unit]
+        Requires=network-online.target
+        After=network-online.target
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        Restart=on-failure
+        RestartSec=10s
+        ExecStart=/opt/installer
+        [Install]
+        WantedBy=multi-user.target
+storage:
+  files:
+    - path: /opt/installer
+      filesystem: root
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash -ex
+          # unmount any leftovers at the beginning before we modify the disk the mount uses
+          umount /tmp/oemfs || true
+          lvchange -an /dev/mapper/vg* || true
+          flatcar-install -s
+          udevadm settle
+          OEM_DEV="$(blkid -t "LABEL=OEM" -o device)"
+          mkdir -p /tmp/oemfs
+          mount "${OEM_DEV}" /tmp/oemfs
+          echo 'set linux_append="flatcar.autologin"' >> /tmp/oemfs/grub.cfg
+          echo 'set linux_console="console=ttyS1,57600n8 earlyprintk=serial,ttyS1,57600n8"' >> /tmp/oemfs/grub.cfg
+          umount /tmp/oemfs
+          # Disable bootflag invalidation timer and set persistent EFI booting from disk
+          docker run --privileged --net host --rm quay.io/kinvolk/racker:latest sh -c 'ipmitool raw 0x0 0x8 0x3 0x1f && ipmitool raw 0x00 0x08 0x05 0xe0 0x08 0x00 0x00 0x00'
+          systemctl reboot
