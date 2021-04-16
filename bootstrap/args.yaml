@@ -99,6 +99,13 @@ args:
       prompt: ip-addrs
     - if-value-not:
       prompt: subnet-prefix
+- name: k8s-domain-name
+  var: KUBERNETES_DOMAIN_NAME
+  help: The Kubernetes domain name is appended to the host name of each node. It is used internally but you can also use a public domain and set its records manually.
+  default: k8s.localdomain
+  prompt:
+    message: Choose a Kubernetes domain name (appended to the host names)
+    type: input
 - name: subnet-prefix
   var: SUBNET_PREFIX
   help: The subnet prefix is in the first three numbers of the decimal IP address format, so that .0/24 can be appended
