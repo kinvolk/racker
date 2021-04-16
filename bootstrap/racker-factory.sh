@@ -59,6 +59,27 @@ field_exists() {
 }
 
 validate() {
+  IPMI_USER="/usr/share/oem/ipmi_user"
+  IPMI_PASSWORD="/usr/share/oem/ipmi_password"
+
+  if [ ! -f "$IPMI_USER" ]; then
+    exit_with_msg "× IPMI user file is missing: $IPMI_USER"
+  fi
+
+  if [ ! -s "$IPMI_USER" ]; then
+    exit_with_msg "× IPMI user file is empty: $IPMI_USER"
+  fi
+
+  if [ ! -f "$IPMI_PASSWORD" ]; then
+    exit_with_msg "× IPMI password file is missing: $IPMI_PASSWORD"
+  fi
+
+  if [ ! -s "$IPMI_PASSWORD" ]; then
+    exit_with_msg "× IPMI password file is empty: $IPMI_PASSWORD"
+  fi
+
+  echo "✓ $IPMI_USER and $IPMI_PASSWORD look valid"
+
   # Check if the file exists
   if [ ! -f $NODES_FILE ]; then
     exit_with_msg "Nodes file is missing: $NODES_FILE"
