@@ -61,7 +61,7 @@ Here are the members it supports:
     * **editor**: Opens the default editor for the user to edit its contents (which will be given by the argument's **default**)
   * **default**: Same the argument's default concept, but specific to the prompt. Use in case there's a need to differentiate between the flag and the prompt's defaults.
   * **next**: List of the next prompts, depending on the answers given to this one. If not configured, then the next question will be the one sequentially after it in the list of arguments. Each entry can have:
-    * **prompt**: The name of the prompt to shown next (if the answer's condition is satified).
+    * **prompt**: The name of the prompt to shown next (if the answer's condition is satisfied).
     * **if-value**: The value for the answer's, meaning that if the user answers this value, then the next question is the one indicated by the **prompt** line above.
     * **if-value-not**: If the user does **not** answer this value, then the next question is the one indicated by the **prompt** line above.
   * **skip**: Whether to skip this prompt (meaning the question needs to be linked to by another question -- using the **next** field -- as it will not be shown directly).

@@ -105,7 +105,7 @@ if [ "${secondary_macs}" != "" ]; then
       gateway=${gateway:-"$(echo "${PUBLIC_IP_ADDRS}" | get_ini ${secondary_mac} gateway)"}
       dns=${dns:-"$(echo "${PUBLIC_IP_ADDRS}" | get_ini ${secondary_mac} dns)"}
       if [ "${gateway}" = "" ] || [ "${dns}" = "" ]; then
-        echo "both the gatway and dns settings are required when an IP address on the public interface is configured"
+        echo "both the gateway and dns settings are required when an IP address on the public interface is configured"
         exit 1
       fi
       PUBLIC_IP_ADDRS_LIST+=("${secondary_mac}-${ipv4_addr_and_subnet}-${gateway}-${dns}")
@@ -597,7 +597,7 @@ EOF
   installer_clc_snippets+=$'\n'"}"
   node_specific_labels+=$'\n'"}"
   # We escape $var as \$var for the bash heredoc to preserve it as Terraform string, use ${VAR} for the bash heredoc substitution.
-  # \${var} would be for Terraform sustitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
+  # \${var} would be for Terraform substitution but it's not used; you can also use a nested terraform heredoc but better avoid it.
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
   # which would be a Terraform variable).
   if [ "$type" = "lokomotive" ]; then
@@ -806,7 +806,7 @@ function execute_and_show_progress() {
   local ret=0
   ellipsis=1
   buffer=""
-  # simple IPC mechanism, create a file descriptor in this process, allowing subtasks to check for existance and run as long as it is there
+  # simple IPC mechanism, create a file descriptor in this process, allowing subtasks to check for existence and run as long as it is there
   exec {running_fd}>/dev/null
   running="/proc/$$/fd/${running_fd}"
   local lines_to_clear=5 # must match the maximum output of the show_progress function or be a bit longer for additional margin
