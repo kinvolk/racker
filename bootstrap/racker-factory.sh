@@ -88,7 +88,7 @@ validate() {
   # Check if the file is not empty
   num_lines=$(cat $NODES_FILE | wc -l)
   if [ $num_lines -lt 2 ]; then
-    exit_with_msg "Error: The nodes file ($NODES_FILE) needs to start with a header and have at least one entry line in the form\n${NODES_HEADER}\n00:11:22:33:44:00, 00:11:22:33:44:01, 00:11:22:33:44:30, ,"
+    exit_with_msg "Error: The nodes file ($NODES_FILE) needs to start with a header and have at least one entry line for the management node in the form\n${NODES_HEADER}\n00:11:22:33:44:00, 00:11:22:33:44:01, 00:11:22:33:44:30, ,"
   fi
 
   # Check if the header looks like it has actual node contents
@@ -125,6 +125,12 @@ validate() {
 
     line_num=$(($line_num+1))
   done <<< "$nodes"
+
+  PXE_INTERFACE="$(/opt/racker/bootstrap/get-pxe-interface.sh || true)"
+  if [ "${PXE_INTERFACE}" = "" ]; then
+    exit_with_msg "Error: Could not determing PXE interface of the management node by looking for a row with the secondary MAC address of the management node"
+  fi
+
 
   echo "✓ $NODES_FILE looks valid"
 
