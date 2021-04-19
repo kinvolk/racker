@@ -54,6 +54,7 @@ for mac in ${FULL_MAC_ADDRESS_LIST[*]}; do
   fi
   printf "\t"
   if [ "${TYPE}" = "Lokomotive" ]; then
+    found=0
     for name in ${names}; do
       found=0
       found_mac="$(get_node_mac "${name}")"
