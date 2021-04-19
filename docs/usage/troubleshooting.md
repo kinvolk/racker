@@ -23,6 +23,10 @@ If you know the version that was deployed before upgrade, then you can use the `
 
 Please refer to the `bootstrap` command's option [`-exclude` instructions](../usage/bootstrap.md).
 
+### How can we verify that the rack nodes and all necessary metadata for later provisioning are set up correctly?
+
+Check out the subsection on [verifying the rack metadata](../management_node.md#verifying-the-rack-metadata) in the [Preparing the Management Node](../management_node.md) section.
+
 ## Have more questions?
 
 If you have more questions/suggestions about issues that are so common that they should be listed above, please [file an issue](https://github.com/kinvolk/racker/issues) about them.
