@@ -69,7 +69,7 @@ args:
 - name: ip-addrs
   var: PUBLIC_IP_ADDRS
   flag:
-    help: Set as "DHCP" for automatically assigning IP address, or provide the configuration of each node in the INI format (read the docs at @todo)
+    help: Set as "DHCP" for automatically assigning IP address, or provide the configuration of each node in the INI format "[aa:bb:cc:dd:ee:ff]\nip_addr = 11.22.33.44/22\ngateway = 11.22.33.1\ndns = 11.22.33.1"
   default: DHCP
   options:
   - display: Use DHCP
@@ -162,10 +162,10 @@ args:
       prompt: number-of-storage-nodes
 - name: number-of-storage-nodes
   var: NUMBER_OF_STORAGE_NODES
-  help: The number of nodes of the selected type to be used for storage.
+  help: The number of nodes of the selected type to be used for storage
   default: all
   prompt:
-    message: Number of machines of selected type to use as storage nodes.
+    message: Number of machines of selected type to use as storage nodes
     type: input
 - name: config-backup
   var: USE_VELERO
@@ -184,6 +184,8 @@ args:
 - name: aws-access-key
   var: BACKUP_AWS_ACCESS_KEY
   help: Provide your AWS access key; leave empty to go back
+  flag:
+    help: Provide your AWS access key; only needed when configuring backups
   prompt:
     skip: true
     message: Enter your AWS access key
@@ -196,6 +198,8 @@ args:
 - name: aws-secret-key
   var: BACKUP_AWS_SECRET_ACCESS_KEY
   help: Provide your AWS secret key; leave empty to go back
+  flag:
+    help: Provide your AWS secret key; only needed when configuring backups
   prompt:
     skip: true
     message: Enter your AWS secret key
@@ -220,7 +224,9 @@ args:
       prompt: backup-s3-bucket
 - name: backup-s3-bucket
   var: BACKUP_S3_BUCKET_NAME
-  help: Provide the name of the S3 bucket you want the back up to be stored at. Leave empty to go back.
+  help: Provide the name of the S3 bucket you want the back up to be stored at; leave empty to go back
+  flag:
+    help: Provide the name of the S3 bucket you want the back up to be stored at; only needed when configuring backups
   default:
   prompt:
     skip: true
@@ -233,7 +239,9 @@ args:
       prompt: backup-aws-location
 - name: backup-aws-location
   var: BACKUP_AWS_REGION
-  help: Provide the region of the S3 bucket you want the back up to be stored at.
+  help: Provide the region of the S3 bucket you want the back up to be stored at
+  flag:
+    help: Provide the region of the S3 bucket you want the back up to be stored at; only needed when configuring backups
   default: us-east-2
   options:
   - display: Other
@@ -268,7 +276,9 @@ args:
       prompt: _backup-aws-location
 - name: _backup-aws-location
   var: BACKUP_AWS_REGION
-  help: Provide the region of the S3 bucket you want the back up to be stored at.
+  help: Provide the region of the S3 bucket you want the back up to be stored at
+  flag:
+    help: Provide the region of the S3 bucket you want the back up to be stored at; only needed when configuring backups
   flag:
     skip: true
   prompt:
