@@ -52,7 +52,7 @@ public IP addresses, but at least for the management node it is required to iden
 
 Example `nodes.csv`:
 
-```
+```csv
 Primary MAC address, BMC MAC address, Secondary MAC address, Node Type, Comments
 00:11:22:33:44:00, 00:11:22:33:44:01, 00:11:22:33:44:30, red, mgmt node
 00:11:22:33:44:10, 00:11:22:33:44:11, 00:11:22:33:44:40, red, controller
@@ -72,3 +72,7 @@ To fetch updates that are compatible with the current version, run `racker updat
 To upgrade to the latest version which may have breaking changes, run `racker upgrade`.
 
 Both will update the `lokoctl` and `terraform` binaries, too.
+
+## Code of Conduct
+
+Please refer to the Kinvolk [Code of Conduct](https://github.com/kinvolk/contribution/blob/master/CODE_OF_CONDUCT.md).
