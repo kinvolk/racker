@@ -16,6 +16,10 @@ clean:
 
 VERSION := $(shell grep -m 1 '^version:' installer/conf.yaml | cut -d : -f 2 | sed 's/ //g')
 
+.PHONY: version
+version:
+	@echo $(VERSION)
+
 .PHONY: image-push
 image-push:
 	docker tag racker:${VERSION} quay.io/kinvolk/racker:${VERSION}
