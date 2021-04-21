@@ -29,5 +29,5 @@ For this reason, upgrading Racker should be done only when no cluster is yet dep
 
 Sometimes it is important to fetch a particular version of Racker. For example, if an update has an important bug, or an *upgrade* has been mistakenly run, it is useful to have a way to go back to a particular version of Racker.
 
-This can be achieved using the `racker get VERSION` command. E.g. `racker get 0.6` fetches and installs Racker version 0.6.
+This can be achieved using the `racker get VERSION` command. E.g. `racker get 0.1` fetches and installs Racker version 0.1.
 As with the `update` or `upgrade` commands, `racker get` also does not really applies any changes to the cluster itself, only install the related versions of the tools/modules shipped with that version.
