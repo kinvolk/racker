@@ -17,7 +17,7 @@ Depending on Racker's version and evolution, maybe some broken symbolic links wi
 
 ### Racker's been upgraded by mistake when it was intended to be updated. How can one go back to the previous version?
 
-If you know the version that was deployed before upgrade, then you can use the `racker get` command for installing the needed version, e.g. `racker get 0.6` will install version 0.6. After this step, any calls to `racker update` will safely update to a compatible version.
+If you know the version that was deployed before upgrade, then you can use the `racker get` command for installing the needed version, e.g. `racker get 0.1` will install version 0.1. After this step, any calls to `racker update` will safely update to a compatible version.
 
 ### There is a node that keeps failing. How can we ignore that node when provisioning a cluster?
 
