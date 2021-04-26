@@ -20,6 +20,8 @@ run locally.
 The reason for this approach if that we can keep a very minimal dependency on
 what's shipped in the OS (that's installed in the management node).
 
+Since Racker runs locally, its container image default command extracts the Racker payload into `/opt/racker`, creates symbolic links in `/opt/bin` to its executables, sets up any systemd services, and thus expects to be run with privileged permissions.
+
 The modules that compose the installer (as well as how to build them) are
 defined in the `./installer/conf.yaml` file.
 
@@ -41,7 +43,7 @@ After that, all interaction is done with the `racker` command.
 
 The `racker factory` mode will help setting up the rack metadata files in `/usr/share/oem/`.
 
-TODO: Not implemented yet, the files have to be created manually:
+These files have to be created manually:
 
 `ipmi_user` and `ipmi_password`: credentials for the BMCs
 
@@ -58,6 +60,8 @@ Primary MAC address, BMC MAC address, Secondary MAC address, Node Type, Comments
 00:11:22:33:44:10, 00:11:22:33:44:11, 00:11:22:33:44:40, red, controller
 00:11:22:33:44:20, 00:11:22:33:44:21, 00:11:22:33:44:50, purple, worker
 ```
+
+For details, read the [docs](docs/).
 
 ### Provisioning a Lokomotive Kubernetes cluster
 

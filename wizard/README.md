@@ -1,8 +1,4 @@
----
-title: Arguments Wizard
-linkTitle: Wizard
-weight: 60
----
+## Arguments Wizard
 
 Racker's project has an `args-wizard` module which is a command line tool to conveniently show a set of questions/options to the user through in either a guided/wizard way, or as command-line flags as an alternative (e.g. for automation).
 This means that each argument can be set up as a **prompt** (a question that is shown to the user, with help text, options, etc.), a **flag** (simply passed as a CLI option `-example=value` that receives a string value), or both.

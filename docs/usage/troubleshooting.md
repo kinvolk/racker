@@ -8,22 +8,22 @@ This section has a list of Frequently Asked Questions related to issues when ins
 If you run into problems using `racker`, please file an issue [here](https://github.com/kinvolk/racker/issues).
 
 
-### Racker's installation seems to be corrupt (e.g. the racker command doesn't work). How can one clean up the installation & reinstall racker?
+## Racker's installation seems to be corrupt (e.g. the racker command doesn't work). How can one clean up the installation & reinstall racker?
 
 Remove the `/opt/racker` folder and [reinstall racker](../_index.md).
 
 Depending on Racker's version and evolution, maybe some broken symbolic links will be left. To remove any dangling sym links from `/opt/bin` you can do e.g. (notice that this example command will delete **any** broken links, related to racker or not):
 `sudo find /opt/bin/ -type l ! -exec test -e {} \; -delete`
 
-### Racker's been upgraded by mistake when it was intended to be updated. How can one go back to the previous version?
+## Racker's been upgraded by mistake when it was intended to be updated. How can one go back to the previous version?
 
 If you know the version that was deployed before upgrade, then you can use the `racker get` command for installing the needed version, e.g. `racker get 0.1` will install version 0.1. After this step, any calls to `racker update` will safely update to a compatible version.
 
-### There is a node that keeps failing. How can we ignore that node when provisioning a cluster?
+## There is a node that keeps failing. How can we ignore that node when provisioning a cluster?
 
 Please refer to the `bootstrap` command's option [`-exclude` instructions](../usage/bootstrap.md).
 
-### How can we verify that the rack nodes and all necessary metadata for later provisioning are set up correctly?
+## How can we verify that the rack nodes and all necessary metadata for later provisioning are set up correctly?
 
 Check out the subsection on [verifying the rack metadata](../management_node.md#verifying-the-rack-metadata) in the [Preparing the Management Node](../management_node.md) section.
 

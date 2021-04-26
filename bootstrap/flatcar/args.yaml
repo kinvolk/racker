@@ -10,7 +10,7 @@ args:
 - name: ip-addrs
   var: PUBLIC_IP_ADDRS
   flag:
-    help: Set as "DHCP" for automatically assigning IP address, or provide the configuration of each node in the INI format (read the docs at @todo)
+    help: Set as "DHCP" for automatically assigning IP address, or provide the configuration of each node in the INI format "[aa:bb:cc:dd:ee:ff]\nip_addr = 11.22.33.44/22\ngateway = 11.22.33.1\ndns = 11.22.33.1"
   default: DHCP
   options:
   - display: Use DHCP
