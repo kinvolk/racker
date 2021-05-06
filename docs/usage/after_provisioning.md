@@ -191,12 +191,12 @@ When run as `racker status -full` it will also show the `ipmi diag` output (see 
 The IPMI interface allows to remote control a server through the BMC.
 It is useful for debugging or turning servers on and off.
 A small `ipmi` helper utility calls `ipmitool` with the right options.
-It only needs the node's primary NIC or BMC MAC address, or full the domain name:
+It only needs the node's primary NIC or BMC MAC address, or full the domain name, or can run in batch mode for all node with `--all`:
 
 ```
 $ ipmi -h
-Usage: /opt/bin/ipmi domain|primary-mac|bmc-mac diag|[ipmitool commands]
-If no command is given, defaults to "sol activate" for attaching the serial console.
+Usage: /opt/bin/ipmi domain|primary-mac|bmc-mac|--all diag|[ipmitool commands]
+If no command is given, defaults to "sol activate" for attaching the serial console (should not be used with --all).
 The "diag" command shows the BMC MAC address, BMC IP address, and the IPMI "chassis status" output.
 This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed.
 ```
@@ -296,6 +296,12 @@ The current settings can be seen with in the `diag` helper output or with `chass
 
 ```
 $ ipmi aa:bb:cc:dd:ee:ff raw 0x0 0x8 0x3 0x1f
+```
+
+All subcommands that are not interactive like, for example, the serial console, can also run in batch mode for all servers:
+
+```
+$ ipmi --all chassis power off
 ```
 
 ## Adding new servers and replacing servers
