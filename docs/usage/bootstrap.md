@@ -276,3 +276,36 @@ If some nodes should be excluded upfront from provisioning, maybe because they a
 `-exclude="aa:bb:cc:dd:ee:11 aa:bb:cc:dd:ee:22"` or `"-exclude=aa:bb:cc:dd:ee:11 aa:bb:cc:dd:ee:22"` or `-exclude "$(cat my_exclude_file)"`.
 The nodes won't get provisioned regardless whether they have the same node type that is used for controller or storage nodes.
 
+## Bootstrap Stages
+
+Racker displays the progress of the different stages by updating the terminal output.
+The first stage checks whether all BMCs are rechable through IPMI.
+When encountering failures, the process should be restarted, possibly with excluding problematic nodes through the `-exclude` flag.
+The second stage checks that the initial OS installation via PXE completes.
+On failure, it offers to retry or exclude problematic nodes depending on the `-onfailure` flag.
+
+Here is an example of a Flatcar Container Linux provisioning that automatically excluded two nodes:
+
+```
+➤ Checking BMC connectivity (10/10)... ✓ done
+➤ OS installation via PXE (8/10)... × failed
+Failed to provision the following 2 nodes:
+aa:bb:cc:dd:ee:11 aa:bb:cc:dd:ee:22
+You can see logs in /home/core/flatcar-container-linux/logs/2021-05-07_17-11-59, run 'ipmi <MAC|DOMAIN> diag' for a short overview of a node, connect to the serial console via 'ipmi <MAC|DOMAIN>', or try to connect via SSH.
+Something went wrong, removing 2 nodes from config and retrying 1/3
+➤ OS installation via PXE (8/8)... ✓ done
+```
+
+For Lokomotive there are additional stages. First the Kubernetes API bring-up, then the cluster health check, and finally the Lokomotive Component installation.
+When some nodes do not join the cluster, the health check stage offers to retry or exclude problematic nodes depending on the `-onfailure` flag.
+Even with all nodes present the cluster health check may still fail due to other reasons.
+
+Here is an example of a completely successful Lokomotive provisioning:
+
+```
+➤ Checking BMC connectivity (10/10)... ✓ done
+➤ OS installation via PXE (10/10)... ✓ done
+➤ Kubernetes bring-up... ✓ done
+➤ Cluster health check (10/10 nodes seen)... ✓ done
+➤ Lokomotive component installation... ✓ done
+```
