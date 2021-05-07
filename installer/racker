@@ -97,7 +97,7 @@ elif [ "$1" = factory ]; then
   shift
   /opt/racker/bootstrap/racker-factory.sh "$@"
 elif [ "$1" = status ]; then
-  if [ "${2:-}" = "-full" ]; then
+  if [ "${2:-}" = "-full" ] || [ "${2:-}" = "--full" ]; then
     STATUS_ARG="--full"
   fi
   /opt/racker/bootstrap/status.sh ${STATUS_ARG:-}
