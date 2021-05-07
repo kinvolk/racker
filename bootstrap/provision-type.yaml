@@ -1,7 +1,7 @@
 ignore-unknown-flags: true
 args:
 - name: onfailure
-  var: ON_FAILURE
+  var: ONFAILURE
   default: ask
   help: "behavior on provisioning failure; options are: ask|retry|exclude|cancel."
   flag:
