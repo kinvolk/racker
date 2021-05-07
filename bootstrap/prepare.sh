@@ -349,11 +349,11 @@ function prepare_dnsmasq_conf() {
   local bmc_ip_address=""
   for mac in ${MAC_ADDRESS_LIST[*]}; do
     ip_address="$(calc_ip_addr ${mac})"
-    echo "dhcp-host=${mac},${ip_address},infinite" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
+    echo "dhcp-host=${mac},${ip_address},2m" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
     if [ -z "$USE_QEMU" ]; then
       bmc_mac=$(grep -m 1 "${mac}" /usr/share/oem/nodes.csv | cut -d , -f 2 | sed 's/ //g')
       bmc_ip_address="$(calc_ip_addr ${bmc_mac})"
-      echo "dhcp-host=${bmc_mac},${bmc_ip_address},infinite" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
+      echo "dhcp-host=${bmc_mac},${bmc_ip_address},2m" >> "/opt/racker-state/dnsmasq/dnsmasq.conf"
     fi
   done
 }

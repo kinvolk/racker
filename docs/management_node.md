@@ -188,7 +188,9 @@ racker status
 ```
 
 If the BMCs were not reachable, check their MAC addresses and the wireing of the NICs to the internal switch.
-Also try to power-cycle the rack to force them to pick up a new IP address via DHCP.
+In case the internal subnet or the MAC address list was changed you should wait 2 minutes before retrying so that the BMCs had a chance to pick up the new IP addresses via DHCP.
+If there was a previous DHCP configuration with a longer lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
+If IPMI static IP addressing was manually configured on the BMCs you have to switch the BMCs back to DHCP (either manually or by switching to the same subnet with `racker bootstrap … -subnet-prefix a.b.c` and then running `ipmi --all lan set 1 ipsrc dhcp`).
 
 If the OS was not provisioned, connect to the problematic node via `ipmi MACADDR` and see whether the PXE-booted system hangs during the installation or whether the final OS hangs during bootup.
 Check whether the internal NIC (the primary NIC) has an IP address and can reach the management node's internal IP address.

@@ -1,7 +1,7 @@
 # dnsmasq.conf
 
 no-daemon
-dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}},infinite
+dhcp-range={{DHCP_RANGE_LOW}},{{DHCP_RANGE_HIGH}},{{DHCP_NETMASK}},2m
 dhcp-ignore-clid
 dhcp-authoritative
 dhcp-option=3

@@ -140,7 +140,10 @@ In any case, the cluster bring up will directly work without further action:
 **Subnet prefix:** The subnet prefix of the rack-internal network defines the IP addresses of the BMCs and the internal NICs.
 Two racks can have the same subnet prefix because the networks don't known about each other.
 Therefore, you should only change this if the default clashes with the external network.
-If you had another value before, you may need to power-cycle the rack so that the BMCs will try to get new IP addresses.
+If you had another value before, you may need to retry after 2 minutes so that the BMCs had a chance to pick up the new IP addresses via DHCP.
+If there was a previous DHCP configuration with a longer lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
+If the IPMI static IP addressing was manually configured on the BMCs you have to switch the BMCs back to DHCP (either manually or by switching to the same subnet with `racker bootstrap … -subnet-prefix a.b.c` and then running `ipmi --all lan set 1 ipsrc dhcp`).
+
 The expected format is the first three numbers of the decimal IP address, so that .0/24 can be appended:
 
 ```
