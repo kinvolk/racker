@@ -99,6 +99,11 @@ echo MYUSER | sudo tee /usr/share/oem/ipmi_user
 echo MYPASSWORD | sudo tee /usr/share/oem/ipmi_password
 ```
 
+It is recommended to have a secure password because untrusted local workloads can reach the BMCs on the internal network.
+If required, the password can be changed later with the `ipmi` helper command, see [After Provisioning → IPMI Credentials](usage/after_provisioning.md).
+
+Racker uses IPMI only and does not make use of any BMC SSH server functions (SMASH).
+
 ### Creating the node list with server MAC addresses
 
 The management node assigns IP addresses for all servers in the rack on their NIC in the rack-internal network.

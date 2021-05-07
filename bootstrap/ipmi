@@ -8,8 +8,8 @@ source "${SCRIPTFOLDER}"/common.sh
 USE_STDIN=${USE_STDIN:-"1"}
 USE_TTY=${USE_TTY:-"1"}
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-  echo "Usage: $0 domain|primary-mac|bmc-mac diag|[ipmitool commands]"
-  echo "If no command is given, defaults to \"sol activate\" for attaching the serial console."
+  echo "Usage: $0 domain|primary-mac|bmc-mac|--all diag|[ipmitool commands]"
+  echo "If no command is given, defaults to \"sol activate\" for attaching the serial console (should not be used with --all)."
   echo "The \"diag\" command shows the BMC MAC address, BMC IP address, and the IPMI \"chassis status\" output."
   echo "This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed."
   exit 1
@@ -21,6 +21,19 @@ else
 fi
 
 NODE="$1"
+
+if [ "${NODE}" = "--all" ]; then
+  # Skip header line, filter out the management node itself and sort by MAC address
+  NODES="$(tail -n +2 /usr/share/oem/nodes.csv | { grep -v -f <(cat /sys/class/net/*/address) || true ; } | sort)"
+  FULL_BMC_MAC_ADDRESS_LIST=($(echo "$NODES" | cut -d , -f 2))
+  for NODE in ${FULL_BMC_MAC_ADDRESS_LIST[*]}; do
+    echo "Output for ${NODE}:"
+    "${SCRIPTFOLDER}"/ipmi "${NODE}" ${CMD} || echo "Failed"
+    echo
+  done
+  exit 0
+fi
+
 if [[ "${NODE}" != *:* ]]; then
   NODE="$(get_node_mac "${NODE}")"
   if [[ "${NODE}" != *:* ]]; then

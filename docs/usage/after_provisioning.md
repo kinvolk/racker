@@ -191,12 +191,12 @@ When run as `racker status -full` it will also show the `ipmi diag` output (see 
 The IPMI interface allows to remote control a server through the BMC.
 It is useful for debugging or turning servers on and off.
 A small `ipmi` helper utility calls `ipmitool` with the right options.
-It only needs the node's primary NIC or BMC MAC address, or full the domain name:
+It only needs the node's primary NIC or BMC MAC address, or full the domain name, or can run in batch mode for all node with `--all`:
 
 ```
 $ ipmi -h
-Usage: /opt/bin/ipmi domain|primary-mac|bmc-mac diag|[ipmitool commands]
-If no command is given, defaults to "sol activate" for attaching the serial console.
+Usage: /opt/bin/ipmi domain|primary-mac|bmc-mac|--all diag|[ipmitool commands]
+If no command is given, defaults to "sol activate" for attaching the serial console (should not be used with --all).
 The "diag" command shows the BMC MAC address, BMC IP address, and the IPMI "chassis status" output.
 This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed.
 ```
@@ -298,6 +298,12 @@ The current settings can be seen with in the `diag` helper output or with `chass
 $ ipmi aa:bb:cc:dd:ee:ff raw 0x0 0x8 0x3 0x1f
 ```
 
+All sub commands that are non-interactive, i.e., almost everything except the serial console, can also run in batch mode to be applied for all servers:
+
+```
+$ ipmi --all chassis power off
+```
+
 ## Adding new servers and replacing servers
 
 When MAC addresses have changed due to a hardware replacement or when new servers were added you need to update the `/usr/share/oem/nodes.csv` file with the new MAC addresses.
@@ -323,5 +329,63 @@ If the IPMI static IP addressing was manually configured on the BMCs you have to
 ## IPMI Credentials
 
 The IPMI credentials under `/usr/share/oem/ipmi_(user|password)` are expected to stay valid for all nodes except the management node which doesn't have its BMC in the rack-internal network.
-Since the network is internal, there shouldn't be a need to change weak credentials as long as you disallow untrusted workloads from accessing the internal network.
 If you want to switch to stronger credentials, it's best to create a new IPMI account on all BMCs and when done, update the credential files and only then remove the old account.
+
+**1.** You need to know which ID the old account has and which ID is free to use for the new account. First, find out which IPMI slot corresponds to the user name in `/usr/share/oem/ipmi_user`:
+
+```
+$ ipmi --all user list | grep "$(cat /usr/share/oem/ipmi_user)" | uniq
+# The output may be:
+# 2   MYUSER           true    false      true       ADMINISTRATOR
+```
+
+The first number is the slot number which you should not use for the new user because it's safer to keep this user to have a fallback until the new user is fully set up.
+
+Now, find a free slot for the new user:
+
+```
+$ ipmi --all user list | sort -n | uniq
+# The output may be:
+# ID  Name           Callin  Link Auth  IPMI Msg   Channel Priv Limit
+# 1                    true    false      true       USER
+# 2   MYUSER           true    false      true       ADMINISTRATOR
+# 3                    true    false      false      NO ACCESS
+# 4                    true    false      false      NO ACCESS
+# 5                    true    false      false      NO ACCESS
+# 6                    true    false      false      NO ACCESS
+# 7   operator         true    false      false      OPERATOR
+# 8                    true    false      false      NO ACCESS
+# 9                    true    false      false      NO ACCESS
+# 10                   true    false      false      NO ACCESS
+```
+
+The IDs where no name is given are free but you can also repurpose an unused account.
+
+**2.** Create the new user with the found free ID:
+
+```
+$ ipmi --all user set name NEWID MYUSER
+$ ipmi --all user set password NEWID MYPASSWORD
+$ ipmi --all user enable NEWID
+# set the privilege to 4 which means ADMINISTRATOR
+$ ipmi --all user priv NEWID 4
+$ ipmi --all channel setaccess 1 NEWID callin=on ipmi=on link=off privilege=4
+```
+
+This is also how you would create additional regular users (not for Racker), but with privilege `2` for `USER` instead of `4` for `ADMINISTRATOR`.
+
+**3.** Finally, you may switch Racker over to the new user:
+
+```
+$ echo MYUSER | sudo tee /usr/share/oem/ipmi_user
+$ echo MYPASSWORD | sudo tee /usr/share/oem/ipmi_password
+# to verify that it still works, run: racker status
+```
+
+**4.** Optionally, disable (or delete) the old user:
+
+```
+$ ipmi --all user disable OLDID
+# delete: ipmi --all raw 0x6 0x45 0xOLDID 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff
+# beware: the ID 10 will have to be written in hex as 0xa
+```
