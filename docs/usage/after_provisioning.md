@@ -178,10 +178,10 @@ the nodes, so one can use SSH or the IPMI serial console to access the nodes:
 ```
 Provisioned: Lokomotive
 Kubernetes API reached: yes
-MAC address        BMC reached  OS provisioned  Joined cluster Hostnames
-aa:bb:cc:dd:ee:11       ✓               ✓               ✓      l.k8s l-controller-0.k8s
-aa:bb:cc:dd:ee:22       ✓               ×               ×
-aa:bb:cc:dd:ee:33       ✓               ✓               ✓      l-worker-2.k8s
+MAC address        BMC reached  Power   OS provisioned  Joined cluster   Hostnames
+aa:bb:cc:dd:ee:11       ✓        on             ✓               ✓        l.k8s l-contr…
+aa:bb:cc:dd:ee:22       ✓        on             ×               ×
+aa:bb:cc:dd:ee:33       ✓        on             ✓               ✓        l-worker-2.k8s
 ```
 
 When run as `racker status -full` it will also show the `ipmi diag` output (see below) for all nodes after the above table output.
