@@ -142,7 +142,7 @@ validate() {
   else
     echo "🛈 $num_node_types node types configured:"
     count=0
-    for i in $(uniq <<< $node_types_list); do
+    for i in $(uniq <<< "$node_types_list"); do
       # Count the nodes of this type and print the result with the type
       echo "  $(echo "$node_types_list" | grep $i | wc -l) \"$i\""
       count=$(($count + 1))
