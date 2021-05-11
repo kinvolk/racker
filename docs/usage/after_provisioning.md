@@ -309,8 +309,8 @@ $ ipmi --all chassis power off
 When MAC addresses have changed due to a hardware replacement or when new servers were added you need to update the `/usr/share/oem/nodes.csv` file with the new MAC addresses.
 You can mimic the other entries for the node type and whether a secondary MAC address is present.
 Finally, run `racker bootstrap` again to provision a new cluster, which will destroy the old cluster.
-Since the BMCs may still have an old IP address, `racker bootstrap` may fail and you may need to retry after 2 minutes so that the BMCs had a chance to pick up the new IP addresses via DHCP.
-If there was a previous DHCP configuration with a longer lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
+In case the BMCs are not reachable, `racker bootstrap` may fail and you may need to check that the BMCs picked up the new IP addresses via DHCP.
+If there was a previous DHCP configuration with a long lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
 If the IPMI static IP addressing was manually configured on the BMCs you have to switch the BMCs back to DHCP (either manually or by switching to the same subnet with `racker bootstrap … -subnet-prefix a.b.c` and then running `ipmi --all lan set 1 ipsrc dhcp`).
 
 ### Workaround for a running cluster
@@ -322,8 +322,8 @@ In case you can't destroy the running cluster, a workaround is to do some manual
 * Create or update the `cl/DOMAIN.yaml` files to have the networkd unit for the primary MAC address. The `cl/DOMAIN-custom.yaml` file may need to contain a networkd unit for the public static IP address for the secondary MAC address.
 * Add or update the entries in `/etc/hosts` for the internal IP addresses.
 * Now run `lokoctl cluster apply` or `terraform apply` to provision the added nodes.
-* **Note:** When creating a new cluster later by running `racker bootstrap` it may fail because the BMCs still use the old IP addresses but the automatic assignment will order the new IP addresses different to the manual assignment after the `nodes.csv` file got changed. You may need to retry after 2 minutes so that the BMCs had a chance to pick up the new IP addresses via DHCP.
-If there was a previous DHCP configuration with a longer lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
+* **Note:** When creating a new cluster later by running `racker bootstrap` and it fails because the BMCs are reachable, check that they don't use old IP addresses but picked up new ones via DHCP but the automatic assignment will order the new IP addresses different to the manual assignment after the `nodes.csv` file got changed.
+If there was a previous DHCP configuration with a long lease time, you can also try to power-cycle the rack to force a DHCP renewal or first switch to the old subnet with `racker bootstrap … -subnet-prefix a.b.c` and then run `ipmi --all lan set 1 ipsrc dhcp` which should trigger a DHCP renewal.
 If the IPMI static IP addressing was manually configured on the BMCs you have to switch the BMCs back to DHCP (either manually or by switching to the same subnet with `racker bootstrap … -subnet-prefix a.b.c` and then running `ipmi --all lan set 1 ipsrc dhcp`).
 
 ## IPMI Credentials
