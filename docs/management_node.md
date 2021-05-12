@@ -19,7 +19,8 @@ It is recommended to automate this in a PXE environment but manual installation 
 Using the following iPXE script `install.ipxe` the management node OS installation can be automated.
 The latest Flatcar Container Linux Stable release will be written to disk, then the kernel console parameters are customized, and finally IPMI is used to set persistent booting from disk in EFI mode before the automatic reboot into the installed OS happens.
 
-The full URL for an iPXE script chain is `https://raw.githubusercontent.com/kinvolk/racker/main/management-node-ipxe/install.ipxe`.
+The full URL for an iPXE script chain (`chain --replace --autofree https://…`) is `https://raw.githubusercontent.com/kinvolk/racker/main/management-node-ipxe/install.ipxe`.
+Since iPXE does not work well with all SSL servers, you may need to host it elsewhere, preferably with HTTP.
 Here are its contents:
 
 ```
