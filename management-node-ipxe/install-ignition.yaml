@@ -25,7 +25,7 @@ storage:
           #!/bin/bash -ex
           # unmount any leftovers at the beginning before we modify the disk the mount uses
           umount /tmp/oemfs || true
-          lvchange -an /dev/mapper/vg* || true
+          lvchange -an /dev/mapper/* || true
           flatcar-install -s
           udevadm settle
           OEM_DEV="$(blkid -t "LABEL=OEM" -o device)"
