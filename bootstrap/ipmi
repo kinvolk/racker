@@ -7,11 +7,14 @@ source "${SCRIPTFOLDER}"/common.sh
 
 USE_STDIN=${USE_STDIN:-"1"}
 USE_TTY=${USE_TTY:-"1"}
+# wait for max 2 minutes DHCP lease time plus 30 secs margin against races with the ARP scanner
+RETRY_SEC=${RETRY_SEC:-"150"}
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo "Usage: $0 domain|primary-mac|bmc-mac|--all diag|[ipmitool commands]"
   echo "If no command is given, defaults to \"sol activate\" for attaching the serial console (should not be used with --all)."
   echo "The \"diag\" command shows the BMC MAC address, BMC IP address, and the IPMI \"chassis status\" output."
   echo "This helper requires a tty and attaches stdin by default, for usage in scripts set the env vars USE_STDIN=0 USE_TTY=0 as needed."
+  echo "When the BMC IP address can't be found, the helper will retry for ${RETRY_SEC} seconds, configurable through the env var RETRY_SEC."
   exit 1
 fi
 if [ $# -gt 1 ]; then
@@ -67,11 +70,19 @@ RACKER_VERSION=$(cat /opt/racker/RACKER_VERSION 2> /dev/null || true)
 if [ "${RACKER_VERSION}" = "" ]; then
   RACKER_VERSION="latest"
 fi
-IP_ADDR="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $BMC --interface ${PXE_INTERFACE} | { grep -m 1 $BMC || true ; } | cut -f 1")"
-if [ "${IP_ADDR}" = "" ]; then
-  echo "Error getting BMC IP address for ${BMC} via ${PXE_INTERFACE}"
-  exit 1
-fi
+
+END=$(( $(date '+%s') + RETRY_SEC ))
+while true; do
+  IP_ADDR="$(docker run --privileged --net host --rm quay.io/kinvolk/racker:${RACKER_VERSION} sh -c "arp-scan -q -l -x -T $BMC --interface ${PXE_INTERFACE} | { grep -m 1 $BMC || true ; } | cut -f 1")"
+  if [ "${IP_ADDR}" = "" ] && [ "$(date '+%s')" -gt "${END}" ]; then
+    echo "Error getting BMC IP address for ${BMC} via ${PXE_INTERFACE}"
+    exit 1
+  fi
+  if [ "${IP_ADDR}" != "" ]; then
+    break
+  fi
+done
+
 IP_ADDR_EXPECTED="$({ grep -m 1 "${BMC}" /opt/racker-state/dnsmasq/dnsmasq.conf || true ; } | cut -d = -f 2 | cut -d , -f 2)"
 if [ "${IP_ADDR}" != "${IP_ADDR_EXPECTED}" ]; then
   echo "Warning: BMC IP address does not match the static IP address set up with dnsmasq, expected \"${IP_ADDR_EXPECTED}\""
