@@ -15,7 +15,7 @@ component "rook-ceph" {
   }
   node_affinity {
     key      = "storage.lokomotive.io"
-    operator = "Equal"
+    operator = "In"
     values    = ["rook"]
   }
 }
