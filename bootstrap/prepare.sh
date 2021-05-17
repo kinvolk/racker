@@ -691,7 +691,7 @@ function bmc_check() {
       tput ed
       ELLIPSIS=$(printf '.%.0s' $(seq ${ellipsis}))
       echo "➤ Checking BMC connectivity (${found}/${all})${ELLIPSIS}"
-      report=$("${SCRIPTFOLDER}"/ipmi "${mac}" diag 2>&1) && let found+=1 || {
+      report=$(USE_TTY=0 USE_STDIN=0 "${SCRIPTFOLDER}"/ipmi "${mac}" diag 2>&1) && let found+=1 || {
         errors+="Error while checking BMC connectivity for ${mac}:"$'\n'"${report}"
         error_macs+=("${mac}")
       }
