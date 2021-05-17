@@ -44,8 +44,7 @@ echo "MAC address        BMC reached  Power   OS provisioned  Joined cluster   H
 full_report=""
 for mac in ${FULL_MAC_ADDRESS_LIST[*]}; do
   printf "${mac}\t"
-  # cut away \r from the ipmitool output
-  report=$("${SCRIPTFOLDER}"/ipmi "${mac}" diag 2>&1 | sed 's/\r//g') && printf "✓\t" || printf "×\t"
+  report=$(USE_TTY=0 USE_STDIN=0 "${SCRIPTFOLDER}"/ipmi "${mac}" diag 2>&1) && printf "✓\t" || printf "×\t"
   full_report+="${report}"$'\n\n'
   power=$(echo "${report}" | { grep -m 1 "^System Power" || true ; } | cut -d : -f 2 | xargs)
   printf " ${power}\t\t"
