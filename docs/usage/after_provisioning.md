@@ -27,6 +27,29 @@ For more information on the Lokomotive configuration, refer to the
 
 The `lokoctl` command is available for applying any changes to the configuration.
 
+### Accessing the Web UI
+
+The Lokomotive Web UI can either be preinstalled in `racker bootstrap` as a Lokomotive component or later installed through `lokoctl`.
+Before it is usable, [authentication credentials](https://kinvolk.io/docs/headlamp/0.3/installation/) are required.
+The easiest way is to create a Service Account with a token as secret:
+
+```
+kubectl -n kube-system create serviceaccount headlamp-admin
+kubectl create clusterrolebinding headlamp-admin --serviceaccount=kube-system:headlamp-admin --clusterrole=cluster-admin
+kubectl -n kube-system describe secret "$(kubectl -n kube-system get secrets | grep -m 1 headlamp-admin-token | cut -d " " -f 1)"
+# copy the token printed after "token: "
+```
+
+For testing purposes without an Ingress node, the Web UI can be reached from the management node through double port forwarding, first from the Kubernetes Pod to the management node, then from the management node to the SSH client:
+
+```
+# on your computer:
+ssh  -L 127.0.0.1:8080:127.0.0.1:8080 -N core@MGMTNODE # add -J USER@JUMPBOX to access the management node through a bastion host
+# on the management node:
+kubectl -n lokomotive-system port-forward svc/web-ui 8080:80
+# now open http://127.0.0.1:8080 in your browser and paste the secret token to log in
+```
+
 ### Applying a config change like registering more SSH keys
 
 To register a new SSH public key on the cluster nodes, first go to the `~/lokomotive` directory on the management node.
@@ -261,7 +284,7 @@ It will	run `ipmitool` in a Docker container and you have to make sure you detac
 You can look for an `ipmitool` container with `docker ps` and run `docker kill ID` to terminate it.
 Proper detaching needs sending `(Enter)~.` to `ipmitool` but SSH also uses the same sequence to detach.
 Assuming you have one SSH connection to the managment node, you would escape the `~` for `ipmitool` by typing it twice (`~~.`).
-In case you don't use `ssh -J JUMPHOST TARGET` but manually chain multiple SSH connections, this could even become `~~~.` or more.
+In case you don't use `ssh -J USER@JUMPHOST core@MGMTNODE` but manually chain multiple SSH connections, this could even become `~~~.` or more.
 
 ### The ipmitool subcommands
 
