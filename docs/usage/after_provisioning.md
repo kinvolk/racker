@@ -412,3 +412,62 @@ $ ipmi --all user disable OLDID
 # delete: ipmi --all raw 0x6 0x45 0xOLDID 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff
 # beware: the ID 10 will have to be written in hex as 0xa
 ```
+
+## Monitoring in Lokomotive
+
+**NOTE**: You must provision a storage provider before proceeding with the steps mentioned below.
+
+After provisioning of the Lokomotive cluster, it makes sense to set up monitoring, be it the status
+of the node, overall usage of the cluster or gathering hardware information via IPMI etc.
+
+Lokomotive provides a component `prometheus-operator` with builtin Grafana dashboards for monitoring
+and alerting.
+
+To install the component, copy the configuration template for the `prometheus-operator` component
+into the `lokomotive` directory, make changes as necessary to the template and apply it using
+`lokoctl`. The execution steps are mentioned below:
+
+```bash
+cp /opt/racker/ipmi-prometheus/prometheus-operator.lokocfg ~/lokomotive/
+
+# Make changes to the prometheus-operator.lokocfg, depending on the chosen storage provider, you
+# have to replace the `<CHANGE_ME>` values
+vi prometheus-operator.lokocfg
+
+# Finally, install the component
+lokoctl component apply prometheus-operator
+```
+
+For more configuration options, refer to the [configuration reference for the
+Prometheus Operator](https://kinvolk.io/docs/lokomotive/0.7/configuration-reference/components/prometheus-operator/).
+
+### IPMI Exporter
+
+**NOTE**: The Prometheus Operator component must be installed before proceeding.
+
+In order to have monitoring for the underlying hardware using IPMI, configuration files are provided
+to start scraping the metrics with Prometheus and visualize the information with the help of a
+Grafana dashboard.
+
+```bash
+cp /opt/racker/ipmi-prometheus/ipmi.yaml ~/lokomotive/
+
+kubectl apply -n monitoring -f ~/lokomotive/ipmi.yaml
+```
+
+To see the Grafana dashboard without an Ingress node, the Grafana UI can be reached from the
+management node through double port forwarding, first from the Kubernetes Pod to the management
+node, then from the management node to the SSH client:
+
+```bash
+# on your computer:
+ssh  -L 127.0.0.1:3000:127.0.0.1:8080 -N core@MGMTNODE # add -J USER@JUMPBOX to access the management node through a bastion host
+
+# on the management node:
+kubectl -n monitoring port-forward svc/prometheus-operator-grafana 8080:80
+
+# now open http://127.0.0.1:3000 in your browser and login to the Grafana dashboard with the
+# password provided in the `prometheus-operator.lokocfg` file. The user is `admin`.
+
+# Once Logged in, open the 'IPMI Dashboard' from the list of dashboards.
+```
