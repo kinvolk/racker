@@ -127,7 +127,7 @@ The YAML files have the Container Linux Config that gets transpiled to an Igniti
 
 The `terraform apply` command will reprovision the nodes to apply the configuration changes.
 
-### Applying a config change like registering more SSH keys                           
+### Applying a config change like registering more SSH keys
 
 To register a new SSH public key on the cluster nodes, first go to the `~/flatcar-container-linux` directory on the management node.
 
