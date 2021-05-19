@@ -9,6 +9,8 @@ modules:
     - type: file
       path: ../bootstrap
     - type: file
+      path: ../ipmi-prometheus
+    - type: file
       url: https://github.com/vmware-tanzu/velero/releases/download/v1.5.2/velero-v1.5.2-linux-amd64.tar.gz
       sha256: 2dfc6ebbe01c7157650ff6c22f9b4842dde99402fbf084f32ae8a7157002a24f
       dest-filename: velero.tar.gz
