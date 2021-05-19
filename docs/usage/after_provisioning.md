@@ -283,7 +283,7 @@ Opening serial console, detach with ~~. (double ~ because you need to escape the
 It will	run `ipmitool` in a Docker container and you have to make sure you detach correctly, otherwise the container keeps running.
 You can look for an `ipmitool` container with `docker ps` and run `docker kill ID` to terminate it.
 Proper detaching needs sending `(Enter)~.` to `ipmitool` but SSH also uses the same sequence to detach.
-Assuming you have one SSH connection to the managment node, you would escape the `~` for `ipmitool` by typing it twice (`~~.`).
+Assuming you have one SSH connection to the management node, you would escape the `~` for `ipmitool` by typing it twice (`~~.`).
 In case you don't use `ssh -J USER@JUMPHOST core@MGMTNODE` but manually chain multiple SSH connections, this could even become `~~~.` or more.
 
 ### The ipmitool subcommands

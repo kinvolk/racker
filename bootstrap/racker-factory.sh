@@ -128,7 +128,7 @@ validate() {
 
   PXE_INTERFACE="$(/opt/racker/bootstrap/get-pxe-interface.sh || true)"
   if [ "${PXE_INTERFACE}" = "" ]; then
-    exit_with_msg "Error: Could not determing PXE interface of the management node by looking for a row with the secondary MAC address of the management node"
+    exit_with_msg "Error: Could not determine the PXE interface of the management node by looking for a row with the secondary MAC address of the management node"
   fi
 
 

@@ -134,7 +134,7 @@ This way you can use SSH and `kubectl` from the outside, too, instead of going t
 In any case, the cluster bring up will directly work without further action:
 
 ```
-? Choose a Kubernetes domain name that is appended to the host name of each node. It is used internally but you can also use a public domain and set its records manually. [? for help] (k8s.localdomain) 
+? Choose a Kubernetes domain name that is appended to the host name of each node. It is used internally but you can also use a public domain and set its records manually. [? for help] (k8s.localdomain)
 ```
 
 **Subnet prefix:** The subnet prefix of the rack-internal network defines the IP addresses of the BMCs and the internal NICs.
@@ -147,7 +147,7 @@ If the IPMI static IP addressing was manually configured on the BMCs you have to
 The expected format is the first three numbers of the decimal IP address, so that .0/24 can be appended:
 
 ```
-? Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network [? for help] (172.24.213) 
+? Choose a subnet prefix for the rack-internal network, only change this if the default clashes with the external network [? for help] (172.24.213)
 ```
 
 **Lokomotive Web UI:** The Lokomotive Web UI is a Kubernetes dashboard and runs as application on top of Kubernetes, deployed as Lokomotive Component.
@@ -180,7 +180,7 @@ Follow these steps:
 The wizard will query for the AWS details, and gives a chance to go back and not configure backups even if you hit `y` the first time:
 
 ```
-? Do you want to set up backup/restore? [? for help] (y/N) 
+? Do you want to set up backup/restore? [? for help] (y/N)
 ```
 
 **Command line parameters**
@@ -203,10 +203,10 @@ Usage:
   -cluster-name string
     	The name for the cluster (default "lokomotive")
   -config-backup string
-    	Whether to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding: 
+    	Whether to set up a backup to S3 using Velero. Ensure the following AWS resources are created before proceeding:
     	 S3 bucket, IAM user for Velero, required policies by the IAM user on the S3 bucket, Access Keys for the IAM user.
     	 Following the steps outlined for the resources:
-    	 Create S3 bucket: https://github.com/vmware-tanzu/velero-plugin-for-aws#create-s3-bucket 
+    	 Create S3 bucket: https://github.com/vmware-tanzu/velero-plugin-for-aws#create-s3-bucket
     	 Creation of IAM user and permissions for the IAM User: https://github.com/vmware-tanzu/velero-plugin-for-aws#set-permissions-for-velero (default "false")
   -controller-type string
     	With different hardware in a rack you can specify which ones to use for the Kubernetes control plane (The node types are annotated in /usr/share/oem/nodes.csv). (default "any")
@@ -279,7 +279,7 @@ The nodes won't get provisioned regardless whether they have the same node type 
 ## Bootstrap Stages
 
 Racker displays the progress of the different stages by updating the terminal output.
-The first stage checks whether all BMCs are rechable through IPMI.
+The first stage checks whether all BMCs are reachable through IPMI.
 When encountering failures, the process should be restarted, possibly with excluding problematic nodes through the `-exclude` flag.
 The second stage checks that the initial OS installation via PXE completes.
 On failure, it offers to retry or exclude problematic nodes depending on the `-onfailure` flag.

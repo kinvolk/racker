@@ -170,7 +170,7 @@ racker factory gen-ssh-key
 
 After the above steps have been completed, the entered data and the hardware wireing need to be checked for errors.
 
-The existance of all metadata files and their syntax should be checked with the following command:
+The existence of all metadata files and their syntax should be checked with the following command:
 
 ```
 racker factory check
