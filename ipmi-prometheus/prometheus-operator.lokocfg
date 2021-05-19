@@ -1,0 +1,22 @@
+component "prometheus-operator" {
+  namespace = "monitoring"
+
+  grafana {
+    admin_password = "<CHANGE_ME>"
+  }
+  prometheus_operator_node_selector = {
+    "storage.lokomotive.io" = "<CHANGE_ME>"
+  }
+
+  prometheus {
+    metrics_retention = "14d"
+    node_selector = {
+      "storage.lokomotive.io" = "<CHANGE_ME>"
+    }
+  }
+
+  alertmanager_retention    = "360h"
+  alertmanager_node_selector = {
+    "storage.lokomotive.io" = "<CHANGE_ME>"
+  }
+}
