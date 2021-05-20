@@ -1,0 +1,59 @@
+#!/bin/bash
+ID="$1"
+PRIMARY="$2"
+BMC="$3"
+SEC="$4"
+TAP0="$5"
+TAP1="$6"
+IMAGE="$7"
+
+B="$8"
+C="$9"
+D="${10}"
+set -euo pipefail
+
+who="$ID"
+
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+state="/tmp/ipmi-sim/${who}"
+mkdir -p "$state"
+
+if [ "$B $C $D" = "set power 1" ]; then
+  pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
+  if [ -e "/proc/${pid}/" ]; then
+    echo "VM ${ID} is already running" > /dev/stderr
+    true
+  else
+    boot=$(cat "${state}/boot" 2>/dev/null || echo "default")
+    echo "Starting VM ${ID} (${boot})" > /dev/stderr
+    set +e
+    "${SCRIPTFOLDER}/qemu-wrap" "${ID}" "${PRIMARY}" "${BMC}" "${SEC}" "${TAP0}" "${TAP1}" "${IMAGE}" "${boot}" &
+    set -e
+  fi
+elif [ "$B $C $D" = "set power 0" ]; then
+  pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
+  echo "Terminating VM ${ID} (PID ${pid})" > /dev/stderr
+  rm -f "${state}/pid" 2>/dev/null
+elif [ "$B $C" = "get power" ]; then # e.g., chassis status, power status
+  pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
+  if [ -e "/proc/${pid}/" ]; then
+    echo "Reporting VM ${ID} power (on)" > /dev/stderr
+    echo "power:1"
+  else
+    echo "Reporting VM ${ID} power (off)" > /dev/stderr
+    echo "power:0"
+  fi
+elif [ "$B $C" = "get boot" ]; then # e.g., chassis bootparam get 5
+  boot=$(cat "${state}/boot" 2>/dev/null || echo "default")
+  echo "Reporting VM ${ID} boot (${boot})" > /dev/stderr
+  echo "boot:${boot}"
+elif [ "$B $C $D" = "set boot default" ] || [ "$B $C $D" = "set boot disk" ] || [ "$B $C $D" = "set boot none" ]; then # chassis bootdev disk (or raw .. for efi)
+  echo "Marked VM ${ID} to boot with ${D}" > /dev/stderr
+  echo "$D" > "${state}/boot"
+elif [ "$B $C $D" = "set boot pxe" ]; then # chassis bootdev pxe (or raw ... for efi)
+  echo "Marked VM ${ID} to boot with ${D}" > /dev/stderr
+  echo "$D" > "${state}/boot"
+else
+  echo "Error, unimplemented: $B $C $D" > /dev/stderr
+  exit 1
+fi
