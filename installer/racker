@@ -208,7 +208,7 @@ elif [ "$1" = bootstrap ]; then
   if [ ! -n "${ha_node_types}" ]; then
     # We have no HA nodes available, so let's not prompt about that and skip
     # directly into the simple nodes choosing
-    first_cluster_type_prompt="controller-type-simple"
+    first_cluster_type_prompt="controller-type"
   else
     ha_node_types=$(echo -n "${ha_node_types}"|sed 's/$/\\/g' | tr '\n' n | sed 's/\\$//g')
     default_num_controllers=3
