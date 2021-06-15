@@ -82,6 +82,34 @@ To upgrade to the latest version which may have breaking changes, run `racker up
 
 Both will update the `lokoctl` and `terraform` binaries, too.
 
+### Lokomotive Baremetal Development Environment
+
+The part of Racker which creates the Lokomotive configuration can be run stand-alone to set up libvirt QEMU instances on your laptop.
+This is different from the [IPMI QEMU simulator environment](racker-sim/) which is preferred as it fully utilizes Racker.
+However, for quick development of Racker/Lokomotive this is how to run it:
+
+```
+cd /var/tmp/
+mkdir mycluster # "prepare.sh create" must run in an empty folder with just the controller_macs/worker_macs files
+cd mycluster
+echo 0c:42:a1:11:11:11 > controller_macs
+echo 0c:42:a1:11:11:22 > worker_macs
+# compile the right Lokomotive branch used in Racker (see installer/conf.yaml)
+sudo rm -r /opt/racker/terraform/
+sudo mkdir -p /opt/racker/terraform
+sudo cp -r /home/$USER/kinvolk/lokomotive/assets/terraform-modules/matchbox-flatcar/* /opt/racker/terraform
+PATH="$PATH:/home/$USER/kinvolk/lokomotive" /home/$USER/kinvolk/racker/bootstrap/prepare.sh create
+[…]
+PATH="$PATH:/home/$USER/kinvolk/lokomotive" lokoctl cluster apply # or any other things you want to do
+[…]
+# later destroy it again:
+PATH="$PATH:/home/$USER/kinvolk/lokomotive" /home/$USER/kinvolk/racker/bootstrap/prepare.sh destroy
+```
+
+It will create two bridges, one for the internal PXE and one for the network with Internet access (using NAT).
+Matchbox and dnsmasq are started as containers (when using Podman matchbox is a user container and dnsmasq a root container).
+The `/opt/racker-state/` folder gets populated with the Flatcar image and the Matchbox configuration.
+
 ## Code of Conduct
 
 Please refer to the Kinvolk [Code of Conduct](https://github.com/kinvolk/contribution/blob/master/CODE_OF_CONDUCT.md).
