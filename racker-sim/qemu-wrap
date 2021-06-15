@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+
+QEMU_ARGS="${QEMU_ARGS-"-nographic"}"
+
+ID="$1"
+PRIMARY="$2"
+BMC="$3"
+SEC="$4"
+TAP0="$5"
+TAP1="$6"
+IMAGE="$7"
+BOOT="$8"
+
+SCRIPTFOLDER="$(dirname "$(readlink -f "$0")")"
+
+QEMU_PID="9999999999999999"
+
+function cancel() {
+  echo
+  echo "Terminating QEMU PID ${QEMU_PID}"
+  kill "${QEMU_PID}"
+  exit 1
+}
+trap cancel INT
+
+if [ "$BOOT" = pxe ]; then
+  ARG="order=n,strict=on"
+else
+  # none/default/disk
+  ARG="order=c,strict=on"
+fi
+
+if [ "${ID}" != 1 ]; then
+  DISK2_ARGS="-drive if=virtio,file=${IMAGE}.disk2"
+  MEMORY=2500
+else
+  DISK2_ARGS=""
+  MEMORY=1000
+fi
+
+state="/tmp/ipmi-sim/${ID}"
+mkdir -p "${state}"
+echo "$$" > "${state}/pid"
+
+set +e
+qemu-system-x86_64 -name "node${ID}" -m "${MEMORY}" -netdev "tap,id=eth0,ifname=${TAP0},script=no,downscript=no" -device "virtio-net-pci,netdev=eth0,mac=${PRIMARY}" -netdev "tap,id=eth1,ifname=${TAP1},script=no,downscript=no" -device "virtio-net-pci,netdev=eth1,mac=${SEC}" -object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 -drive "if=virtio,file=${IMAGE}" -machine accel=kvm -cpu host -smp 4 -chardev "socket,id=ipmichr0,host=localhost,port=90${ID}2,reconnect=10" -device ipmi-bmc-extern,chardev=ipmichr0,id=bmc0 -device isa-ipmi-bt,bmc=bmc0,irq=0 -serial "mon:tcp::90${ID}3,server,telnet,nowait" -boot "${ARG}" -no-reboot ${DISK2_ARGS} ${QEMU_ARGS} > /dev/stderr &
+QEMU_PID="$!"
+set -e
+echo "Watching over QEMU PID ${QEMU_PID} for VM ${ID}" > /dev/stderr
+# Run QEMU in background to be able to kill it by forwarding TERM
+while [ -e "${state}/pid" ] && [ -e "/proc/${QEMU_PID}/" ]; do
+  sleep 0.5
+done
+if [ -e "/proc/${QEMU_PID}/" ]; then
+  kill "${QEMU_PID}"
+  echo "Permanent power off for VM ${ID}" > /dev/stderr
+  exit 0
+else
+  echo "Rebooting VM ${ID} after guest shutdown or reboot (Permanent power off only via IPMI)" > /dev/stderr
+fi
+# Restart VM again as workaround because the boot order can't be changed while QEMU is running.
+# This means permanent power off is only supported through IPMI shutdown which kills this script.
+rm -f "${state}/pid" 2>/dev/null
+exec "${SCRIPTFOLDER}/chassis" "${ID}" "${PRIMARY}" "${BMC}" "${SEC}" "${TAP0}" "${TAP1}" "${IMAGE}" set power 1

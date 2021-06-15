@@ -13,6 +13,11 @@ servers are on a public network. This allows to reach the management node's BMC 
 while the management node itself has full control over the BMCs of the rack, serving DHCP to
 them and interfacing with IPMI to control the PXE booting.
 
+## Test it in VMs
+
+You can use the [racker-sim](racker-sim/) `ipmi-env.sh` script to create a VM environment that simulates IPMI.
+This allows you to run Racker without requiring a free rack.
+
 ## Installer
 
 The installer is delivered as a container image but extracted in the host and
