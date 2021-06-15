@@ -630,7 +630,7 @@ EOF
     tee -a "${variable_file}" >/dev/null <<-EOF
 	kernel_console = []
 	install_pre_reboot_cmds = ""
-	pxe_commands = "sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
+	pxe_commands = "sudo virsh destroy \$domain || true; sudo virsh undefine \$domain || true; sudo virsh pool-refresh default || true; sudo virsh vol-delete --pool default \$domain.qcow2 || true; sudo virt-install --name \$domain --network=bridge:${INTERNAL_BRIDGE_NAME},mac=\$mac  --network=bridge:${EXTERNAL_BRIDGE_NAME} --memory=${VM_MEMORY} --vcpus=1 --disk pool=default,size=${VM_DISK} --os-type=linux --os-variant=generic --noautoconsole --events on_poweroff=preserve --boot=hd,network"
 EOF
   else
     # The first ipmitool raw command is used to disable the 60 secs timeout that clears the boot flag
