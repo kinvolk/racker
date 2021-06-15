@@ -973,7 +973,7 @@ if [ "$1" = create ]; then
     STAGE="lokomotive-components" execute_with_retry "lokoctl component apply"
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
-      ln -fs "${ASSET_DIR}/cluster-assets/auth/kubeconfig" ~/.kube/config
+      ln -fs ../lokomotive/lokoctl-assets/cluster-assets/auth/kubeconfig ~/.kube/config
     fi
     echo "The cluster is ready."
     echo "Running the racker bootstrap command is not needed anymore if you want to change something."
