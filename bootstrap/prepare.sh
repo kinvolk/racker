@@ -523,7 +523,11 @@ function gen_cluster_vars() {
     name="controller"
   fi
   for mac in ${MAC_ADDRESS_LIST[*]}; do
-    node_color="$(echo "$NODES" | grep ${mac} | cut -d , -f 4 | xargs)"
+    if [ -n "$USE_QEMU" ]; then
+      node_color=""
+    else
+      node_color="$(echo "$NODES" | grep ${mac} | cut -d , -f 4 | xargs)"
+    fi
     ip_address="$(calc_ip_addr $mac)"
     if [ "$type" = "lokomotive" ]; then
       id="${CLUSTER_NAME}-${name}-${count}.${KUBERNETES_DOMAIN_NAME}"
