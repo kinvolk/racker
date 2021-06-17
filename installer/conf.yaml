@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.2
 modules:
   - name: .
     assets:
@@ -24,7 +24,7 @@ modules:
       dest-filename: kubectl
     - type: git
       url: https://github.com/kinvolk/lokomotive.git
-      branch: "imran/baremetal-reprovisioning"
+      branch: "master"
     build-commands:
     - mkdir bin
     - cd ./wizard && go build -o args-wizard ./args-wizard.go && mv ./args-wizard ../bin/ && cd .. && rm -rf ./wizard

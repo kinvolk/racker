@@ -24,6 +24,7 @@ cluster "bare-metal" {
   pxe_commands = var.pxe_commands
   install_pre_reboot_cmds = var.install_pre_reboot_cmds
   node_specific_labels = var.node_specific_labels
+  wipe_additional_disks = true
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
