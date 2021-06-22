@@ -20,6 +20,7 @@ if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   exit 1
 fi
 
+/bin/which capsh &> /dev/null || { echo "capsh not found: Install the cpash binary from your distribution" > /dev/stderr ; exit 1 ; }
 /bin/which ipmi_sim &> /dev/null || { echo "ipmi_sim not found: Install the ipmi_sim binary from your distribution" > /dev/stderr ; exit 1 ; }
 /bin/which socat &> /dev/null || { echo "socat not found: Install the socat binary from your distribution" > /dev/stderr ; exit 1 ; }
 /bin/which qemu-system-x86_64 &> /dev/null || { echo "qemu-system-x86_64 not found: Install the qemu-system-x86_64 binary from your distribution" > /dev/stderr ; exit 1 ; }
@@ -149,7 +150,7 @@ function config_file() {
     cat << EOF
 set_working_mc ${ADDR}
 startlan 1
-addr :: 90${ID}1
+addr 127.0.90.${ID}1 623
 priv_limit admin
 allowed_auths_callback none md2 md5 straight
 allowed_auths_user none md2 md5 straight
@@ -228,7 +229,7 @@ function create_sim() {
     running="/proc/$$/fd/${running_fd}"
     (
     set +e
-    sudo unshare --mount-proc -n -R "${DISK_FOLDER}/node${ID}-bmc" sh -c "ip link set dev lo up; nsenter -a -t 1 ip link set node${ID}bmc0 netns \$\$; ip link set dev node${ID}bmc0 up; dhclient -d --no-pid & socat -T10 udp4-listen:623,reuseaddr,reuseport,fork exec:'nsenter -a -t 1 socat -T10 STDIO udp4\:127.0.0.1\:90${ID}1' & while [ -e '${running}' ]; do sleep 1; done; kill 0; exit 0" &
+    sudo unshare --mount-proc -n -R "${DISK_FOLDER}/node${ID}-bmc" sh -c "ip link set dev lo up; nsenter -a -t 1 ip link set node${ID}bmc0 netns \$\$; ip link set dev node${ID}bmc0 up; dhclient -d --no-pid & socat -T10 udp4-listen:623,reuseaddr,reuseport,fork exec:'nsenter -a -t 1 socat -T10 STDIO udp4\:127.0.90.${ID}1\:623' & while [ -e '${running}' ]; do sleep 1; done; kill 0; exit 0" &
     )
     sudo ip tuntap add "${TAP0}" mode tap
     sudo ip link set dev "${TAP0}" up
@@ -301,9 +302,10 @@ if [ "$1" = create ]; then
   create_sim
 
   echo "Press Ctrl-C to quit"
-  config_file > /dev/stderr
-  command_file > /dev/stderr
-  ipmi_sim -d --config-file <(config_file) -f <(command_file) --nopersist -n
+  config_file > /tmp/ipmi-sim/config_file
+  command_file > /tmp/ipmi-sim/command_file
+  # Allow the ipmi_sim process to bind to 623 because IPMI embedds the port into the protocol and with UDP forwarding from a different port it complains that the used port mismatches when trying to use the serial console
+  sudo -E capsh --caps='cap_net_bind_service+eip cap_setpcap,cap_setuid,cap_setgid+ep' --keep=1 --user="$USER" --addamb=cap_net_bind_service -- -c 'exec ipmi_sim -d --config-file /tmp/ipmi-sim/config_file -f /tmp/ipmi-sim/command_file --nopersist -n'
   cancel
 else
   echo "Unknown argument: $@"

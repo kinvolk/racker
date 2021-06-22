@@ -15,7 +15,7 @@ QEMU_ARGS="" ./ipmi-env.sh create nodes.csv 00:11:22:33:44:00 ./flatcar_producti
 
 To access the management node use the opened QEMU VGA console,
 or `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22 core@192.168.254.X` where `X` is the IP address you can see in QEMU with `ip a`,
-or `ipmitool -C3 -I lanplus -H localhost -p 9011 -U USER -P PASS sol activate` where you can run `echo ssh-rsa AAA... me@mail.com > .ssh/authorized_keys` to
+or `ipmitool -C3 -I lanplus -H 127.0.90.11 -U USER -P PASS sol activate` where you can run `echo ssh-rsa AAA... me@mail.com > .ssh/authorized_keys` to
 add your SSH pub key.
 
 Follow the Racker manual PDF on how to install Racker in the management node (`sudo docker run..` and create the `nodes.csv` file under `/usr/share/oem/` etc).
@@ -32,6 +32,10 @@ ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22 core@192.1
 # Afterwards to provision a cluster run: racker bootstrap
 ```
 
+The serial console with IPMI from the internal network (e.g., `ipmi NODE` with Racker) only works when the `kernel_console` variable in `lokocfg.vars` is changed to `kernel_console = ["console=ttyS0,115200n8", "earlyprintk=serial,ttyS0,115200n8"]`.
+
 You can pass the `PUBLIC_BRIDGE_PREFIX` env var to `ipmi-env.sh` to choose another /24 subnet prefix for the public bridge, the last byte will be appended (default `192.168.254`).
+
+The IPMI endpoints can also be reached on the host's loopback interface with the IP address `127.0.90.${ID}1` where ID is the node ID starting from 1 for the management node.
 
 By default no VM windows are created because the `QEMU_ARGS` env var defaults to `-nographic` but you can overwrite it as done above with `QEMU_ARGS=""` to have VM windows pop up (requires X11/Wayland).
