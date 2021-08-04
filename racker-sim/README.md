@@ -29,6 +29,7 @@ cat nodes.csv | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22 core@192.168.254.X
 # To install Racker run: sudo docker run --rm --privileged --pid host quay.io/kinvolk/racker:latest
 #                        racker factory check
+# To fix the serial console settings for QEMU run: sudo sed -i 's/ttyS1,57600n8/ttyS0,115200n8/g' /opt/racker/bootstrap/prepare.sh
 # Afterwards to provision a cluster run: racker bootstrap
 ```
 
