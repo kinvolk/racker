@@ -58,12 +58,15 @@ if [ "${NUMBER_OF_STORAGE_NODES}" = "0" ]; then
     STORAGE_PROVIDER="none"
 fi
 USE_QEMU=${USE_QEMU:-"1"}
+QEMU_SINGLE_NIC=${QEMU_SINGLE_NIC:-""}
 if [ "$USE_QEMU" = "0" ]; then
   USE_QEMU=""
 fi
+OLD_LOKOMOTIVE=${OLD_LOKOMOTIVE:-""}
 
 if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-  echo "Usage: USE_QEMU=0|1 $0 create|destroy"
+  echo "Usage: USE_QEMU=0|1 [QEMU_SINGLE_NIC=0|1] $0 create|destroy"
+  echo "Should be run in a new empty directory, 'create' can't be rerun without removing the directory contents first."
   echo "Note: Make sure you disable any firewall for DHCP on the bridge, e.g. on Fedora, run sudo systemctl disable --now firewalld"
   exit 1
 fi
@@ -78,7 +81,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 if [ "$(which lokoctl 2> /dev/null)" = "" ]; then
- echo "lokoctl version not found in PATH"
+ echo "lokoctl not found in PATH"
  exit 1
 fi
 
@@ -243,7 +246,7 @@ function create_network() {
     sudo ip link set "${INTERNAL_BRIDGE_NAME}" up
     sudo ip addr add dev "${INTERNAL_BRIDGE_NAME}" "${INTERNAL_BRIDGE_ADDRESS}/${INTERNAL_BRIDGE_SIZE}" broadcast "${INTERNAL_BRIDGE_BROADCAST}"
 
-    # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway)
+    # Setup NAT Internet access for the bridge (external, because the internal bridge DHCP does not announce a gateway unless QEMU_SINGLE_NIC is set)
     sudo iptables -P FORWARD ACCEPT
     sudo iptables -t nat -A POSTROUTING -o $(ip route get 1 | grep -o -P ' dev .*? ' | cut -d ' ' -f 3) -j MASQUERADE
 
@@ -344,6 +347,11 @@ function prepare_dnsmasq_conf() {
     -e "s/{{BRIDGE_NAME}}/${PXE_INTERFACE}/g" \
     -e "s/{{MATCHBOX}}/$(get_matchbox_ip_addr)/g" \
     < "$SCRIPTFOLDER/dnsmasq.conf.template" > "/opt/racker-state/dnsmasq/dnsmasq.conf"
+  # # Careful: Assumes a particular format of the entries in the dnsmasq.conf.template file
+  if [ "${QEMU_SINGLE_NIC}" = "1" ]; then
+    sed -i "s/dhcp-option=3/dhcp-option=3,$(get_matchbox_ip_addr)/g" /opt/racker-state/dnsmasq/dnsmasq.conf
+    sed -i "/dhcp-option=6/d" /opt/racker-state/dnsmasq/dnsmasq.conf
+  fi
   local ip_address=""
   local bmc_mac=""
   local bmc_ip_address=""
@@ -401,7 +409,7 @@ EOF
     sudo systemctl restart dnsmasq.service
   fi
 
-  if [ -n "$USE_QEMU" ]; then
+  if [ -n "$USE_QEMU" ] && [ "${QEMU_SINGLE_NIC}" != "1" ]; then
   prepare_dnsmasq_external_conf
 
   sudo docker run --name dnsmasq-external \
@@ -556,6 +564,12 @@ function gen_cluster_vars() {
     else
       sed -e "s/{{MAC}}/${mac}/g" -e "s#{{IP_ADDRESS}}#${ip_address}#g" -e "s#{{RACKER_VERSION}}#${RACKER_VERSION}#g" < "$SCRIPTFOLDER/flatcar/network.yaml.template" > "cl/${id}.yaml"
     fi
+    if [ "${QEMU_SINGLE_NIC}" = "1" ]; then
+      # Careful: Assumes a particular format of the first entry in the network.yaml.template file
+      sed -i "0,/RequiredForOnline=no/s//RequiredForOnline=yes/" "cl/${id}.yaml"
+      sed -i "0,/Scope=link/s//Scope=global/" "cl/${id}.yaml"
+      sed -i "0,/LinkLocalAddressing=no/s//LinkLocalAddressing=no\n        DNS=$(get_matchbox_ip_addr)\n        [Route]\n        Destination=0.0.0.0\/0\n        Gateway=$(get_matchbox_ip_addr)/" "cl/${id}.yaml"
+    fi
     if [ "${#PUBLIC_IP_ADDRS_LIST[*]}" != "0" ]; then
       installer_clc_snippets+="\"${id}\" = [\"cl/${id}-custom.yaml\"]"$'\n'
       for entry in ${PUBLIC_IP_ADDRS_LIST[*]}; do
@@ -605,10 +619,15 @@ EOF
   # The "pxe_commands" variable is executed as command in a context that sets up "$mac" and "$domain" (but don't use "${mac}"
   # which would be a Terraform variable).
   if [ "$type" = "lokomotive" ]; then
+    if [ "${OLD_LOKOMOTIVE}" = "1" ]; then
+      COMPAT_OLD_LOKOMOTIVE="${CLUSTER_NAME}."
+    else
+      COMPAT_OLD_LOKOMOTIVE=""
+    fi
     tee lokocfg.vars >/dev/null <<-EOF
 	cluster_name = "${CLUSTER_NAME}"
 	asset_dir = "${ASSET_DIR}"
-	k8s_domain_name = "${KUBERNETES_DOMAIN_NAME}"
+	k8s_domain_name = "${COMPAT_OLD_LOKOMOTIVE}${KUBERNETES_DOMAIN_NAME}"
 	controller_macs = ${controller_macs}
 	worker_macs = ${worker_macs}
 	controller_names = ${controller_names}
@@ -648,6 +667,14 @@ EOF
 
   if [ "$type" = "lokomotive" ]; then
     copy_script baremetal.lokocfg
+    if [ "${OLD_LOKOMOTIVE}" = "1" ]; then
+      sed -i "/wipe_additional_disks = true/d" baremetal.lokocfg
+      sed -i "/node_specific_labels = var.node_specific_labels/d" baremetal.lokocfg
+      sed -i "/pxe_commands = var.pxe_commands/d" baremetal.lokocfg
+      sed -i "/install_pre_reboot_cmds = var.install_pre_reboot_cmds/d" baremetal.lokocfg
+      sed -i "/kernel_console = var.kernel_console/d" baremetal.lokocfg
+      sed -i "/installer_clc_snippets =.*/d" baremetal.lokocfg
+    fi
 
     if [ "$STORAGE_PROVIDER" = "rook" ]; then
       copy_script rook.lokocfg
@@ -973,7 +1000,12 @@ if [ "$1" = create ]; then
 
   if [ "${PROVISION_TYPE}" = "lokomotive" ]; then
     MAC_STATE="${ASSET_DIR}/cluster-assets"
-    STAGE="lokomotive-bringup" execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check --skip-control-plane-update --confirm"
+    if [ "${OLD_LOKOMOTIVE}" != "1" ]; then
+      EXTRA_ARG="--skip-control-plane-update"
+    else
+      EXTRA_ARG=""
+    fi
+    STAGE="lokomotive-bringup" execute_with_retry "lokoctl cluster apply --verbose --skip-components --skip-pre-update-health-check ${EXTRA_ARG} --confirm"
     STAGE="lokomotive-components" execute_with_retry "lokoctl component apply"
     if [ -z "$USE_QEMU" ]; then
       echo "Setting up ~/.kube/config symlink for kubectl"
