@@ -92,6 +92,16 @@ Now apply the change which is done by a full reprovisioning including a PXE boot
 lokoctl cluster apply
 ```
 
+### Keeping worker node state by preventing reprovisioning
+
+While Racker has the default behavior to reprovision the worker nodes on configuration changes, this can cause disruption and loss of data in the storage volumes.
+You can opt out of this behavior by changing the value of `ignore_worker_changes` in `baremetal.lokocfg`.
+
+```
+vi baremetal.lokocfg
+# now change "ignore_worker_changes = false" to "ignore_worker_changes = true"
+```
+
 ### Excluding a node
 
 A faulty node may prevent a change operation to be completed. The node can be removed from the cluster configuration like done during the bootstrap.

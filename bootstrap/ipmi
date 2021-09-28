@@ -97,6 +97,8 @@ fi
 IPMI_USER=$(cat /usr/share/oem/ipmi_user)
 IPMI_PASSWORD=$(cat /usr/share/oem/ipmi_password)
 if [ "${CMD}" = "sol activate" ]; then
+  # Disconnect any dangling sessions
+  docker run --privileged --net host --rm ${ARGS} quay.io/kinvolk/racker:${RACKER_VERSION} ipmitool -C3 -I lanplus -H "${IP_ADDR}" -U "${IPMI_USER}" -P "${IPMI_PASSWORD}" sol deactivate || true
   echo "Opening serial console, detach with ~~. (double ~ because you need to escape the ~ when already using SSH or a serial console, with two SSH connections it would be ~~~.)"
 fi
 if [ "${CMD}" = "diag" ]; then

@@ -25,6 +25,9 @@ cluster "bare-metal" {
   install_pre_reboot_cmds = var.install_pre_reboot_cmds
   node_specific_labels = var.node_specific_labels
   wipe_additional_disks = true
+  # Change this to 'true' to prevent the worker from being reprovisioned due to configuration changes.
+  # Using 'true' means the worker keeps its current state (e.g., storage volumes) but things like new SSH keys need to be added manually.
+  ignore_worker_changes = false
 
   # Adds oidc flags to API server with default values.
   # Acts as a smoke test to check if API server is functional after addition
