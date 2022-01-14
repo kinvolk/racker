@@ -305,7 +305,7 @@ if [ "$1" = create ]; then
   config_file > /tmp/ipmi-sim/config_file
   command_file > /tmp/ipmi-sim/command_file
   # Allow the ipmi_sim process to bind to 623 because IPMI embedds the port into the protocol and with UDP forwarding from a different port it complains that the used port mismatches when trying to use the serial console
-  sudo -E capsh --caps='cap_net_bind_service+eip cap_setpcap,cap_setuid,cap_setgid+ep' --keep=1 --user="$USER" --addamb=cap_net_bind_service -- -c 'exec ipmi_sim -d --config-file /tmp/ipmi-sim/config_file -f /tmp/ipmi-sim/command_file --nopersist -n'
+  sudo -E capsh --caps='cap_net_bind_service+eip cap_setpcap,cap_setuid,cap_setgid+ep' --keep=1 --user="$USER" --addamb=cap_net_bind_service -- -c 'exec ipmi_sim -d --config-file /tmp/ipmi-sim/config_file -f /tmp/ipmi-sim/command_file --nopersist -n' || { cancel ; exit 1 ; }
   cancel
 else
   echo "Unknown argument: $@"
