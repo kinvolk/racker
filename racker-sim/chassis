@@ -21,39 +21,39 @@ mkdir -p "$state"
 if [ "$B $C $D" = "set power 1" ]; then
   pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
   if [ -e "/proc/${pid}/" ]; then
-    echo "VM ${ID} is already running" > /dev/stderr
+    echo "VM ${ID} is already running" >&2
     true
   else
     boot=$(cat "${state}/boot" 2>/dev/null || echo "default")
-    echo "Starting VM ${ID} (${boot})" > /dev/stderr
+    echo "Starting VM ${ID} (${boot})" >&2
     set +e
     "${SCRIPTFOLDER}/qemu-wrap" "${ID}" "${PRIMARY}" "${BMC}" "${SEC}" "${TAP0}" "${TAP1}" "${IMAGE}" "${boot}" &
     set -e
   fi
 elif [ "$B $C $D" = "set power 0" ]; then
   pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
-  echo "Terminating VM ${ID} (PID ${pid})" > /dev/stderr
+  echo "Terminating VM ${ID} (PID ${pid})" >&2
   rm -f "${state}/pid" 2>/dev/null
 elif [ "$B $C" = "get power" ]; then # e.g., chassis status, power status
   pid=$(cat "${state}/pid" 2>/dev/null || echo 9999999999999999)
   if [ -e "/proc/${pid}/" ]; then
-    echo "Reporting VM ${ID} power (on)" > /dev/stderr
+    echo "Reporting VM ${ID} power (on)" >&2
     echo "power:1"
   else
-    echo "Reporting VM ${ID} power (off)" > /dev/stderr
+    echo "Reporting VM ${ID} power (off)" >&2
     echo "power:0"
   fi
 elif [ "$B $C" = "get boot" ]; then # e.g., chassis bootparam get 5
   boot=$(cat "${state}/boot" 2>/dev/null || echo "default")
-  echo "Reporting VM ${ID} boot (${boot})" > /dev/stderr
+  echo "Reporting VM ${ID} boot (${boot})" >&2
   echo "boot:${boot}"
 elif [ "$B $C $D" = "set boot default" ] || [ "$B $C $D" = "set boot disk" ] || [ "$B $C $D" = "set boot none" ]; then # chassis bootdev disk (or raw .. for efi)
-  echo "Marked VM ${ID} to boot with ${D}" > /dev/stderr
+  echo "Marked VM ${ID} to boot with ${D}" >&2
   echo "$D" > "${state}/boot"
 elif [ "$B $C $D" = "set boot pxe" ]; then # chassis bootdev pxe (or raw ... for efi)
-  echo "Marked VM ${ID} to boot with ${D}" > /dev/stderr
+  echo "Marked VM ${ID} to boot with ${D}" >&2
   echo "$D" > "${state}/boot"
 else
-  echo "Error, unimplemented: $B $C $D" > /dev/stderr
+  echo "Error, unimplemented: $B $C $D" >&2
   exit 1
 fi
